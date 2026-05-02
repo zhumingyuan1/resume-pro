@@ -1,23 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getAdminClient } from '@/lib/supabase-admin';
 
-// 获取STAR模板
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const industry = searchParams.get('industry');
   const dimension = searchParams.get('dimension');
+
+  const supabase = getAdminClient();
 
   let query = supabase
     .from('star_templates')
     .select('*')
     .order('usage_count', { ascending: false });
 
-  if (industry) {
-    query = query.eq('industry', industry);
-  }
-  if (dimension) {
-    query = query.eq('dimension', dimension);
-  }
+  if (industry) query = query.eq('industry', industry);
+  if (dimension) query = query.eq('dimension', dimension);
 
   const { data, error } = await query.limit(50);
 
@@ -28,9 +25,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ success: true, data, total: data?.length || 0 });
 }
 
-// 写入新STAR模板
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getAdminClient();
     const body = await req.json();
     const { industry, dimension, situation, task, action, result, example_verbatim } = body;
 

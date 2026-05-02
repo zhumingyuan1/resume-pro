@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getAdminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -7,20 +7,16 @@ export async function GET(req: NextRequest) {
   const keywordType = searchParams.get('type');
   const keyword = searchParams.get('keyword');
 
+  const supabase = getAdminClient();
+
   let query = supabase
     .from('industry_keywords')
     .select('*')
     .order('frequency', { ascending: false });
 
-  if (industry) {
-    query = query.eq('industry', industry);
-  }
-  if (keywordType) {
-    query = query.eq('keyword_type', keywordType);
-  }
-  if (keyword) {
-    query = query.ilike('keyword', `%${keyword}%`);
-  }
+  if (industry) query = query.eq('industry', industry);
+  if (keywordType) query = query.eq('keyword_type', keywordType);
+  if (keyword) query = query.ilike('keyword', `%${keyword}%`);
 
   const { data, error } = await query.limit(200);
 
@@ -28,7 +24,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 
-  // 按type分组
   const grouped = {
     tech: data?.filter(r => r.keyword_type === 'tech') || [],
     soft: data?.filter(r => r.keyword_type === 'soft') || [],
@@ -36,7 +31,6 @@ export async function GET(req: NextRequest) {
     cert: data?.filter(r => r.keyword_type === 'cert') || [],
   };
 
-  // 按行业分组
   const industries = [...new Set(data?.map(r => r.industry) || [])];
 
   return NextResponse.json({
@@ -48,9 +42,9 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// 批量增加关键词
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getAdminClient();
     const body = await req.json();
     const { keywords } = body;
 
