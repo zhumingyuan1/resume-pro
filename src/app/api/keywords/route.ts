@@ -24,21 +24,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 
+  // API层去重：按 (keyword, keyword_type) 唯一性去重
+  const seen = new Set<string>();
+  const uniqueData = (data || []).filter(r => {
+    const key = `${r.keyword}||${r.keyword_type}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
   const grouped = {
-    tech: data?.filter(r => r.keyword_type === 'tech') || [],
-    soft: data?.filter(r => r.keyword_type === 'soft') || [],
-    quant: data?.filter(r => r.keyword_type === 'quant') || [],
-    cert: data?.filter(r => r.keyword_type === 'cert') || [],
+    tech: uniqueData.filter(r => r.keyword_type === 'tech'),
+    soft: uniqueData.filter(r => r.keyword_type === 'soft'),
+    quant: uniqueData.filter(r => r.keyword_type === 'quant'),
+    cert: uniqueData.filter(r => r.keyword_type === 'cert'),
   };
 
-  const industries = [...new Set(data?.map(r => r.industry) || [])];
+  const industries = [...new Set(uniqueData.map(r => r.industry))];
 
   return NextResponse.json({
     success: true,
-    data,
+    data: uniqueData,
     grouped,
     industries,
-    total: data?.length || 0,
+    total: uniqueData.length,
   });
 }
 

@@ -177,16 +177,20 @@ export default function FormSectionWork() {
       {guidedOpen && (
         <GuidedAdd
           type="work"
-          onClose={() => setGuidedOpen(false)}
+          onClose={() => {
+            setGuidedOpen(false);
+            // 清空表单，避免残留数据被误保存
+            setForm({ company:'', position:'', startDate:'', endDate:'', isCurrent: false, highlights:'', free:'' });
+          }}
           onGenerated={({ highlights }) => {
             if (!currentResume || !highlights) return;
             const item: WorkExperience = {
               id: crypto.randomUUID(),
-              company: '新工作经历（点击编辑）',
-              position: '请填写职位',
-              startDate: '',
-              endDate: '',
-              current: false,
+              company: form.company.trim() || '',
+              position: form.position.trim() || '',
+              startDate: form.startDate || '',
+              endDate: form.isCurrent ? 'present' : (form.endDate || ''),
+              current: form.isCurrent,
               highlights,
             };
             updateResume(currentResume.id, { work: [...works, item] });

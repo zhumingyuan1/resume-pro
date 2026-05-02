@@ -1,232 +1,207 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useResumeStore } from '@/lib/resume-store';
-import type { Resume } from '@/types/resume';
 
-// 生成简历打印用 HTML（独立完整文档，不依赖任何外部样式）
-function buildResumeHtml(resume: any): string {
+function ResumePrintContent({ resume }: { resume: any }) {
+  if (!resume) return null;
   const p = resume.profile || {};
-  const formatDate = (d: string) => {
-    if (!d) return '';
-    if (d === 'present') return '至今';
-    return d;
-  };
+  const fmt = (d: string) => !d ? '' : d === 'present' ? '至今' : d;
 
-  const workItems = (resume.work || []).map((job: any) => `
-    <div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-        <span style="font-weight:700;font-size:10pt;color:#1a1a1a">${job.position || ''} · ${job.company || ''}</span>
-        <span style="font-size:9pt;color:#777">${formatDate(job.startDate)} - ${formatDate(job.endDate)}</span>
+  return (
+    <div style={{
+      width: '210mm',
+      minHeight: '297mm',
+      padding: '16mm 18mm',
+      fontFamily: '"PingFang SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif',
+      fontSize: '10.5pt',
+      lineHeight: 1.65,
+      color: '#1a1a1a',
+      background: '#fff',
+      boxSizing: 'border-box',
+    }}>
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: '18pt', fontWeight: 800, color: '#111' }}>{p.name || '姓名'}</div>
+        <div style={{ fontSize: '11pt', color: '#555', marginBottom: 4 }}>{p.titles?.default || p.title || ''}</div>
+        <div style={{ fontSize: '9.5pt', color: '#666', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {p.email && <span>📧 {p.email}</span>}
+          {p.phone && <span>📱 {p.phone}</span>}
+          {p.location && <span>📍 {p.location}</span>}
+        </div>
       </div>
-      ${(job.highlights || []).filter(Boolean).map((h: string) => `<li style="font-size:9.5pt;color:#444;line-height:1.6;margin-bottom:2px;padding-left:12pt">${h}</li>`).join('')}
+
+      {p.summary && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1.5px solid #1a1a1a' }}>
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: 4 }}>个人简介</div>
+          <div style={{ fontSize: '9.5pt', color: '#444', lineHeight: 1.8 }}>{p.summary}</div>
+        </div>
+      )}
+
+      {(resume.work || []).length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1.5px solid #1a1a1a' }}>
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: 6 }}>工作经历</div>
+          {(resume.work || []).map((job: any) => (
+            <div key={job.id} style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: '10pt', color: '#1a1a1a' }}>{job.position || ''}</span>
+                  {job.company && <span style={{ color: '#555', marginLeft: 6 }}>· {job.company}</span>}
+                </div>
+                <span style={{ fontSize: '9pt', color: '#777' }}>{fmt(job.startDate)} - {fmt(job.endDate)}</span>
+              </div>
+              {(job.highlights || []).filter(Boolean).map((h: string, i: number) => (
+                <div key={i} style={{ fontSize: '9.5pt', color: '#444', lineHeight: 1.6, paddingLeft: 12 }}>• {h}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(resume.education || []).length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1.5px solid #1a1a1a' }}>
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: 6 }}>教育背景</div>
+          {(resume.education || []).map((e: any) => (
+            <div key={e.id} style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontWeight: 700, fontSize: '10pt', color: '#1a1a1a' }}>{e.institution || ''}</span>
+                <span style={{ fontSize: '9pt', color: '#777' }}>{fmt(e.startDate)} - {fmt(e.endDate)}</span>
+              </div>
+              <div style={{ fontSize: '9.5pt', color: '#555' }}>
+                {[e.degree, e.field].filter(Boolean).join(' · ')}{e.gpa ? ` · GPA ${e.gpa}` : ''}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(resume.projects || []).length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1.5px solid #1a1a1a' }}>
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: 6 }}>项目经历</div>
+          {(resume.projects || []).map((proj: any) => (
+            <div key={proj.id} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontWeight: 700, fontSize: '10pt', color: '#1a1a1a' }}>{proj.name || ''}</span>
+                {proj.role && <span style={{ fontSize: '9pt', color: '#777' }}>{proj.role}</span>}
+              </div>
+              {(proj.technologies || []).length > 0 && (
+                <div style={{ fontSize: '9pt', color: '#666', marginBottom: 2 }}>技术栈：{(proj.technologies || []).join(' / ')}</div>
+              )}
+              {(proj.highlights || []).filter(Boolean).map((h: string, i: number) => (
+                <div key={i} style={{ fontSize: '9.5pt', color: '#444', lineHeight: 1.6, paddingLeft: 12 }}>• {h}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(resume.skills || []).length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1.5px solid #1a1a1a' }}>
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: 6 }}>技能特长</div>
+          {(resume.skills || []).map((cat: any) => (
+            <div key={cat.id} style={{ marginBottom: 5 }}>
+              <span style={{ fontWeight: 600, fontSize: '9.5pt', color: '#1a1a1a' }}>{cat.category}：</span>
+              <span style={{ fontSize: '9.5pt', color: '#444' }}>{(cat.skills || []).map((s: any) => s.name || '').join('、')}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(resume.certifications || []).length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1.5px solid #1a1a1a' }}>
+          <div style={{ fontSize: '11pt', fontWeight: 700, marginBottom: 6 }}>证书</div>
+          {(resume.certifications || []).map((c: any) => (
+            <div key={c.id} style={{ fontSize: '9.5pt', color: '#444', marginBottom: 3 }}>{c.name || ''}{c.issuer ? ` · ${c.issuer}` : ''}{c.date ? ` ${c.date}` : ''}</div>
+          ))}
+        </div>
+      )}
     </div>
-  `).join('');
-
-  const eduItems = (resume.education || []).map((e: any) => `
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <span style="font-weight:700;font-size:10pt;color:#1a1a1a">${e.institution || ''} · ${e.degree || ''} · ${e.field || ''}</span>
-        <span style="font-size:9pt;color:#777">${formatDate(e.startDate)} - ${formatDate(e.endDate)}</span>
-      </div>
-      ${e.gpa ? `<div style="font-size:9pt;color:#666;margin-top:2px">GPA ${e.gpa}</div>` : ''}
-      ${(e.achievements || []).length ? `<div style="font-size:9pt;color:#555;margin-top:2px">${(e.achievements || []).join(' · ')}</div>` : ''}
-    </div>
-  `).join('');
-
-  const skillItems = (resume.skills || []).map((cat: any) => `
-    <div style="margin-bottom:8px">
-      <span style="font-weight:600;font-size:9.5pt;color:#1a1a1a">${cat.category || ''}：</span>
-      <span style="font-size:9.5pt;color:#444">${(cat.skills || []).map((s: any) => s.name || '').join('、')}</span>
-    </div>
-  `).join('');
-
-  const projectItems = (resume.projects || []).map((proj: any) => `
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
-        <span style="font-weight:700;font-size:10pt;color:#1a1a1a">${proj.name || ''}</span>
-        ${proj.role ? `<span style="font-size:9pt;color:#777">${proj.role}</span>` : ''}
-      </div>
-      ${(proj.technologies || []).length ? `<div style="font-size:9pt;color:#666;margin-bottom:3px">技术栈：${(proj.technologies || []).join(' / ')}</div>` : ''}
-      ${(proj.highlights || []).filter(Boolean).map((h: string) => `<li style="font-size:9.5pt;color:#444;line-height:1.6;margin-bottom:2px;padding-left:12pt">${h}</li>`).join('')}
-    </div>
-  `).join('');
-
-  const certItems = (resume.certifications || []).map((c: any) => `
-    <div style="font-size:9.5pt;color:#444;margin-bottom:4px">${c.name || ''} · ${c.issuer || ''} ${c.date || ''}</div>
-  `).join('');
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
-  font-size: 10.5pt;
-  line-height: 1.65;
-  color: #1a1a1a;
-  padding: 16mm 18mm;
-  width: 210mm;
-  min-height: 297mm;
-}
-h1 { font-size: 16pt; font-weight: 800; margin-bottom: 2pt; color: #111; }
-.job-title { font-size: 10pt; color: #555; margin-bottom: 5pt; }
-.contact { font-size: 9pt; color: #666; margin-bottom: 10pt; line-height: 1.6; }
-.section { margin-bottom: 12pt; }
-.section-title {
-  font-size: 11pt;
-  font-weight: 700;
-  border-bottom: 1.5px solid #1a1a1a;
-  padding-bottom: 3pt;
-  margin-bottom: 8pt;
-  color: #111;
-}
-.item { margin-bottom: 8pt; }
-ul { padding-left: 14pt; margin-top: 4pt; }
-li { margin-bottom: 3pt; }
-.print-only { display: block; }
-</style>
-</head>
-<body>
-<h1>${p.name || '姓名'}</h1>
-<p class="job-title">${p.titles?.default || p.title || '求职目标'}</p>
-<p class="contact">
-  ${p.email ? '📧 ' + p.email + ' &nbsp;|&nbsp; ' : ''}
-  ${p.phone ? '📱 ' + p.phone + ' &nbsp;|&nbsp; ' : ''}
-  ${p.location ? '📍 ' + p.location : ''}
-</p>
-
-${p.summary ? `
-<div class="section">
-  <div class="section-title">个人简介</div>
-  <p style="font-size:9.5pt;line-height:1.75;color:#444">${p.summary}</p>
-</div>
-` : ''}
-
-${(resume.work || []).length ? `
-<div class="section">
-  <div class="section-title">工作经历</div>
-  ${workItems}
-</div>
-` : ''}
-
-${(resume.education || []).length ? `
-<div class="section">
-  <div class="section-title">教育背景</div>
-  ${eduItems}
-</div>
-` : ''}
-
-${(resume.projects || []).length ? `
-<div class="section">
-  <div class="section-title">项目经历</div>
-  ${projectItems}
-</div>
-` : ''}
-
-${(resume.skills || []).length ? `
-<div class="section">
-  <div class="section-title">技能特长</div>
-  ${skillItems}
-</div>
-` : ''}
-
-${(resume.certifications || []).length ? `
-<div class="section">
-  <div class="section-title">证书</div>
-  ${certItems}
-</div>
-` : ''}
-</body>
-</html>`;
+  );
 }
 
 export default function ExportButton() {
   const { currentResume } = useResumeStore();
   const [exporting, setExporting] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [showExport, setShowExport] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   const handleExport = async () => {
     if (!currentResume) return;
+    setShowExport(true);
     setExporting(true);
 
     try {
-      // 动态导入避免 SSR 报错
+      // 等 DOM 完全渲染
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       const html2pdf = (await import('html2pdf.js')).default;
-
-      const html = buildResumeHtml(currentResume);
-
-      // 用 iframe 承载内容，隔离样式，避免污染主文档
-      const iframe = iframeRef.current;
-      if (!iframe) return;
-
-      const iframeWindow = iframe.contentWindow;
-      if (!iframeWindow) return;
-
-      iframe.style.display = 'block';
-      iframe.style.position = 'absolute';
-      iframe.style.top = '-9999px';
-      iframe.style.left = '-9999px';
-      iframe.width = '794'; // A4 @ 96dpi
-      iframe.height = '1123';
-
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!iframeDoc) return;
-
-      iframeDoc.open();
-      iframeDoc.write(html);
-      iframeDoc.close();
-
-      // 等待字体/内容渲染
-      await new Promise(resolve => setTimeout(resolve, 600));
+      const el = exportRef.current;
+      if (!el) throw new Error('Export element not found');
 
       const filename = `${currentResume.profile?.name || '简历'}_简历Pro.pdf`;
 
-      const opt = {
-        margin: 0,
-        filename,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait' as const,
-        },
-        pagebreak: { mode: 'avoid-all' as const },
-      };
+      await html2pdf()
+        .set({
+          margin: 0,
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+          },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        })
+        .from(el)
+        .save();
 
-      await html2pdf().set(opt).from(iframeDoc.body).save();
-
-      // 清理
-      iframe.style.display = 'none';
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (err) {
       console.error('PDF export error:', err);
-      alert('PDF 导出失败，请重试。错误信息：' + (err instanceof Error ? err.message : String(err)));
+      alert('PDF 导出失败：' + (err instanceof Error ? err.message : String(err)));
     } finally {
+      setShowExport(false);
       setExporting(false);
     }
   };
 
   return (
     <>
-      {/* 隐藏的 iframe 用于承载打印内容 */}
-      <iframe
-        ref={iframeRef}
-        style={{ display: 'none', position: 'absolute', top: '-9999px', left: '-9999px' }}
-        title="简历打印内容"
-      />
+      {/* 导出用隐藏 DOM，on mount 时渲染一次 currentResume */}
+      {showExport && (
+        <div
+          ref={exportRef}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '210mm',
+            background: '#fff',
+            zIndex: -1,
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          <ResumePrintContent resume={currentResume} />
+        </div>
+      )}
 
       <button
         onClick={handleExport}
         disabled={!currentResume || exporting}
-        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+        style={{
+          padding: '7px 14px',
+          fontSize: 13,
+          fontWeight: 500,
+          color: !currentResume || exporting ? '#9ca3af' : '#6b7280',
+          background: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: 8,
+          cursor: !currentResume || exporting ? 'not-allowed' : 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
       >
         {exporting ? (
           <>
@@ -237,7 +212,7 @@ export default function ExportButton() {
             </svg>
             生成中...
           </>
-        ) : '导出PDF'}
+        ) : '📄 导出PDF'}
       </button>
     </>
   );
