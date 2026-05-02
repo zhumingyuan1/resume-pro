@@ -6,12 +6,26 @@ import { useResumeStore } from '@/lib/resume-store';
 interface Result {
   score: number;
   level: string;
+  industry: string;
   missing: string[];
   matchedKeywords: string[];
   suggestions: string[];
   techScore: number;
   softScore: number;
   quantScore: number;
+}
+
+// 从求职目标推断行业
+function inferIndustry(targetRole: string): string {
+  const role = targetRole.toLowerCase();
+  if (/前端|后端|全栈|算法|测试|运维|DevOps|架构|java|python|react|vue|node\.?js|golang|go|php/i.test(role)) return '互联网';
+  if (/产品|运营|增长|用户|内容|活动|投放|社群/i.test(role)) return '互联网';
+  if (/银行|证券|基金|保险|风控|量化|信托|资管|CFA|CPA/i.test(role)) return '金融';
+  if (/医生|护士|临床|医学|药学|生物|CRA|NMPA/i.test(role)) return '医疗';
+  if (/教师|课程|教学|培训|留学|教务/i.test(role)) return '教育';
+  if (/市场|品牌|BD|商务|销售|渠道/i.test(role)) return '快消';
+  if (/HR|人力|招聘|培训|员工关系/i.test(role)) return '人力资源';
+  return '互联网';
 }
 
 const FEATURES = [
@@ -38,40 +52,70 @@ export default function JDMatcher({ onStart }: { onStart: () => void }) {
   const analyze = async () => {
     if (!jd.trim()) return;
     setLoading(true);
-    await new Promise(r => setTimeout(r, 2000));
 
-    const techWords = ['React', 'Vue', 'TypeScript', 'Node.js', 'Python', 'Java', 'Go', 'SQL', 'Redis', 'K8s', 'Docker', '微服务', '分布式', '前端', '后端', '全栈'];
-    const softWords = ['团队协作', '沟通能力', '项目管理', '逻辑思维', '自驱力', '学习能力', '责任心', '抗压'];
-    const quantWords = ['提升', '增长', '优化', '降低', '提高', '负责', '主导', '带领'];
+    // 从JD推断行业
+    const industry = inferIndustry(jd);
 
-    const upper = jd.toUpperCase();
-    const techHits = techWords.filter(w => upper.includes(w.toUpperCase()) || jd.includes(w));
-    const softHits = softWords.filter(w => jd.includes(w));
-    const quantHits = quantWords.filter(w => jd.includes(w));
+    try {
+      // 并发：从API拉取行业关键词 + 保留2秒加载体验
+      const [apiRes] = await Promise.all([
+        fetch(`/api/keywords?industry=${encodeURIComponent(industry)}&type=`).then(r => r.json()).catch(() => null),
+        new Promise(r => setTimeout(r, 1800)),
+      ]);
 
-    const techScore = Math.min(95, 40 + techHits.length * 8);
-    const softScore = Math.min(85, 50 + softHits.length * 7);
-    const quantScore = Math.min(90, 50 + quantHits.length * 10);
-    const total = Math.round(techScore * 0.5 + softScore * 0.3 + quantScore * 0.2);
-    const level = total >= 80 ? '匹配度很高' : total >= 60 ? '匹配度中等' : '匹配度偏低';
-    const missing = techWords.filter(w => !techHits.includes(w)).slice(0, 6);
-    const suggestions: string[] = [];
-    if (techHits.length < 3) suggestions.push('建议增加更多技术栈关键词');
-    if (quantHits.length < 2) suggestions.push('建议在描述中加入量化数据');
-    if (softHits.length < 2) suggestions.push('建议补充团队协作相关描述');
+      // 回退：如果API失败，用默认关键词
+      const apiKeywords = apiRes?.success && apiRes?.grouped
+        ? apiRes.grouped
+        : { tech: [], soft: [], quant: [], cert: [] };
 
-    setResult({ score: total, level, missing, matchedKeywords: techHits, suggestions, techScore, softScore, quantScore });
-    // 写入 store，供编辑器使用
-    setJdAnalysis({
-      jdText: jd,
-      score: total,
-      techScore,
-      softScore,
-      quantScore,
-      matchedKeywords: techHits,
-      missingKeywords: missing,
-      suggestions,
-    });
+      const techWords = apiKeywords.tech?.map((k: any) => k.keyword) || [];
+      const softWords = apiKeywords.soft?.map((k: any) => k.keyword) || [];
+      const quantWords = apiKeywords.quant?.map((k: any) => k.keyword) || [];
+
+      // 如果API关键词为空，用硬编码备选
+      const finalTech = techWords.length ? techWords : ['React', 'Vue', 'TypeScript', 'Node.js', 'Python', 'Java', 'Go', 'SQL', 'Redis', 'Docker', 'K8s', '微服务'];
+      const finalSoft = softWords.length ? softWords : ['团队协作', '沟通能力', '项目管理', '逻辑思维', '自驱力', '学习能力'];
+      const finalQuant = quantWords.length ? quantWords : ['提升', '增长', '优化', '降低', '提高', '主导'];
+
+      const upper = jd.toUpperCase();
+      const techHits = finalTech.filter((w: string) => upper.includes(w.toUpperCase()) || jd.includes(w));
+      const softHits = finalSoft.filter((w: string) => jd.includes(w));
+      const quantHits = finalQuant.filter((w: string) => jd.includes(w));
+
+      const techScore = Math.min(95, 40 + techHits.length * 8);
+      const softScore = Math.min(85, 50 + softHits.length * 7);
+      const quantScore = Math.min(90, 50 + quantHits.length * 10);
+      const total = Math.round(techScore * 0.5 + softScore * 0.3 + quantScore * 0.2);
+      const level = total >= 80 ? '匹配度很高' : total >= 60 ? '匹配度中等' : '匹配度偏低';
+      const missing = finalTech.filter((w: string) => !techHits.includes(w)).slice(0, 8);
+      const suggestions: string[] = [];
+      if (techHits.length < 3) suggestions.push('建议增加更多技术栈关键词');
+      if (quantHits.length < 2) suggestions.push('建议在描述中加入量化数据');
+      if (softHits.length < 2) suggestions.push('建议补充团队协作相关描述');
+
+      const finalResult = { score: total, level, industry, missing, matchedKeywords: techHits, suggestions, techScore, softScore, quantScore };
+      setResult(finalResult);
+      setJdAnalysis({
+        jdText: jd,
+        score: total,
+        techScore,
+        softScore,
+        quantScore,
+        matchedKeywords: techHits,
+        missingKeywords: missing,
+        suggestions,
+      });
+    } catch {
+      // 网络错误时回退到基础分析
+      await new Promise(r => setTimeout(r, 1500));
+      const fallbackTech = ['React', 'Vue', 'TypeScript', 'Node.js', 'Python', 'Java', 'Go', 'SQL', 'Redis', 'Docker', 'K8s'];
+      const upper = jd.toUpperCase();
+      const techHits = fallbackTech.filter((w: string) => upper.includes(w.toUpperCase()) || jd.includes(w));
+      const total = Math.round((Math.min(95, 40 + techHits.length * 8)) * 0.5 + 40);
+      setResult({ score: total, level: total >= 70 ? '匹配度中等' : '匹配度偏低', industry, missing: [], matchedKeywords: techHits, suggestions: [], techScore: 60, softScore: 60, quantScore: 60 });
+      setJdAnalysis({ jdText: jd, score: total, techScore: 60, softScore: 60, quantScore: 60, matchedKeywords: techHits, missingKeywords: [], suggestions: [] });
+    }
+
     setLoading(false);
   };
 
@@ -273,6 +317,14 @@ export default function JDMatcher({ onStart }: { onStart: () => void }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                 <div>
                   <h2 style={{ fontSize: 15, fontWeight: 600, color: '#374151', margin: 0 }}>匹配度分析结果</h2>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                    <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, background: '#f3f4f6', color: '#6b7280', fontWeight: 500 }}>
+                      行业：{result.industry || '互联网'}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#9ca3af', alignSelf: 'center' }}>
+                      已匹配关键词：{result.matchedKeywords.length} 个
+                    </span>
+                  </div>
                   <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
                     ⚠️ 基于行业通用简历规则的评估，而非招聘系统(ATS)官方数据
                   </p>
