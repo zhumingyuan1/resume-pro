@@ -260,8 +260,8 @@ export default function JDMatcher({ onStart }: { onStart: () => void }) {
               {jd ? (
                 <button onClick={() => { setJd(''); setResult(null); }}
                   style={{ fontSize: 12, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0' }}
-                  onMouseEnter={e => (e.target as HTMLButtonElement).style.color = '#6b7280'}
-                  onMouseLeave={e => (e.target as HTMLButtonElement).style.color = '#9ca3af'}
+                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = '#6b7280'}
+                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = '#9ca3af'}
                 >
                   清空内容
                 </button>
