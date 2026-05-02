@@ -161,7 +161,9 @@ export default function ImpactAnalyzer() {
   };
 
   const applyToResume = () => {
-    if (!resume || selectedResults.size === 0 || !result) return;
+    // 每次都从 store 读最新值，避免闭包捕获旧数据
+    const { currentResume: liveResume, updateResume } = useResumeStore.getState();
+    if (!liveResume || selectedResults.size === 0 || !result) return;
 
     const selectedTexts = Array.from(selectedResults)
       .map(i => result[i])
@@ -169,8 +171,8 @@ export default function ImpactAnalyzer() {
       .map(r => `• ${r.dimension}：${r.value}`);
 
     // 找到有实质内容的工作/项目条目（有公司名或职位名）
-    const validWorkEntry = (resume.work || []).find(w => w.company?.trim() || w.position?.trim());
-    const validProjectEntry = (resume.projects || []).find(p => p.name?.trim() || p.role?.trim());
+    const validWorkEntry = (liveResume.work || []).find(w => w.company?.trim() || w.position?.trim());
+    const validProjectEntry = (liveResume.projects || []).find(p => p.name?.trim() || p.role?.trim());
 
     if (selectedTexts.length === 0) {
       alert('请至少选择一条有具体数据的量化结果');
@@ -179,19 +181,19 @@ export default function ImpactAnalyzer() {
 
     // 根据经历类型添加到对应模块
     if (expType === 'job' && validWorkEntry) {
-      const updated = [...resume.work];
+      const updated = [...liveResume.work];
       updated[updated.length - 1] = {
         ...updated[updated.length - 1],
         highlights: [...updated[updated.length - 1].highlights, ...selectedTexts],
       };
-      updateResume(resume.id, { work: updated });
+      updateResume(liveResume.id, { work: updated });
     } else if (expType === 'project' && validProjectEntry) {
-      const updated = [...resume.projects];
+      const updated = [...liveResume.projects];
       updated[updated.length - 1] = {
         ...updated[updated.length - 1],
         highlights: [...updated[updated.length - 1].highlights, ...selectedTexts],
       };
-      updateResume(resume.id, { projects: updated });
+      updateResume(liveResume.id, { projects: updated });
     } else {
       // 没有现有条目或条目为空时，提示用户先添加
       alert('请先在对应模块添加一条经历（至少填写公司名或项目名称），再使用成就量化助手');
