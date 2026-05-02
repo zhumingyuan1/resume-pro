@@ -1,11 +1,11 @@
 'use client';
 // @ts-nocheck
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useResumeStore } from '@/lib/resume-store';
 import type { JdAnalysis } from '@/types/resume';
 
-// 内容可编辑的文本组件
+// 内容可编辑的文本组件（通用版，对深浅背景都清晰）
 function EditableText({ value, onSave, editMode }: {
   value: string;
   onSave: (v: string) => void;
@@ -28,26 +28,29 @@ function EditableText({ value, onSave, editMode }: {
       contentEditable
       suppressContentEditableWarning
       onBlur={handleBlur}
-      data-placeholder={value || '点击填写'}
       style={{
-        outline: 'none',
-        background: '#f0f9ff',
-        borderBottom: '1.5px dashed #93c5fd',
+        outline: '2px solid #2563eb',
+        outlineOffset: '2px',
+        borderRadius: 3,
+        boxShadow: '0 0 0 3px rgba(37,99,235,0.15)',
         cursor: 'text',
-        borderRadius: 2,
-        padding: '0 2px',
-        minWidth: 24,
+        minWidth: 20,
+        padding: '1px 3px',
+        margin: '0 -3px',
         display: 'inline',
-        color: value ? 'inherit' : '#9ca3af',
-        fontStyle: value ? 'normal' : 'italic',
+        color: 'inherit',
+        background: 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(4px)',
+        fontWeight: 600,
+        fontStyle: 'normal',
       }}
     >
-      {value || ''}
+      {value || <span style={{ color: '#64748b', fontStyle: 'italic' }}>点击填写</span>}
     </span>
   );
 }
 
-// 内容可编辑的列表项
+// 内容可编辑的列表项（描述类文字用这个）
 function EditableHighlight({ value, onSave, editMode }: {
   value: string;
   onSave: (v: string) => void;
@@ -71,15 +74,20 @@ function EditableHighlight({ value, onSave, editMode }: {
       suppressContentEditableWarning
       onBlur={handleBlur}
       style={{
-        outline: 'none',
-        background: '#fffbeb',
-        borderBottom: '1.5px dashed #fde68a',
+        outline: '2px solid #f59e0b',
+        outlineOffset: '2px',
+        borderRadius: 3,
+        boxShadow: '0 0 0 3px rgba(245,158,11,0.15)',
         cursor: 'text',
-        borderRadius: 2,
-        padding: '1px 4px',
-        display: 'block',
         minWidth: 60,
+        padding: '1px 4px',
+        margin: '0 -4px',
+        display: 'block',
         color: '#374151',
+        background: 'rgba(255,251,235,0.95)',
+        backdropFilter: 'blur(4px)',
+        fontWeight: 500,
+        lineHeight: 1.65,
       }}
     >
       {value}
