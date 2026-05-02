@@ -65,7 +65,7 @@ function makeEmpty(): Resume {
 export default function HomePage() {
   const [view, setView] = useState<'home' | 'editor'>('home');
   const [section, setSection] = useState('basic');
-  const { setCurrentResume, currentResume } = useResumeStore();
+  const { setCurrentResume, currentResume, editMode, setEditMode } = useResumeStore();
   const { jdAnalysis } = useResumeStore();
   const progress = computeProgress(currentResume);
   const [navWidth, setNavWidth] = useState(160);
@@ -171,6 +171,19 @@ export default function HomePage() {
             返回首页
           </button>
           <ExportButton />
+          <button
+            onClick={() => setEditMode(!editMode)}
+            style={{
+              padding: '7px 14px', fontSize: 13, fontWeight: 500,
+              color: editMode ? '#fff' : '#6b7280',
+              background: editMode ? 'linear-gradient(135deg, #2563eb, #4f46e5)' : '#fff',
+              border: '1px solid', borderColor: editMode ? '#4f46e5' : '#e5e7eb',
+              borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
+              boxShadow: editMode ? '0 4px 14px rgba(37,99,235,0.3)' : 'none',
+            }}
+          >
+            {editMode ? '✓ 完成编辑' : '✏️ 编辑预览'}
+          </button>
           <a href="/health"
             style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', transition: 'all 0.15s', display: 'flex', alignItems: 'center' }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = '#f9fafb'; el.style.borderColor = '#d1d5db'; }}

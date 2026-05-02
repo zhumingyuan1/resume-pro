@@ -23,6 +23,9 @@ export interface ResumeStore {
   historyIndex: number;
   // 投递追踪
   applications: ApplicationRecord[];
+  // 预览编辑模式
+  editMode: boolean;
+  setEditMode: (on: boolean) => void;
   setCurrentResume: (resume: Resume | null) => void;
   setCurrentStep: (step: number) => void;
   setSelectedTemplate: (template: string) => void;
@@ -99,6 +102,7 @@ const initialState = {
   history: [] as Resume[],
   historyIndex: -1,
   applications: [] as ApplicationRecord[],
+  editMode: false,
 };
 
 export const useResumeStore = create<ResumeStore>()(
@@ -207,6 +211,8 @@ export const useResumeStore = create<ResumeStore>()(
       deleteApplication: (id) => set((state) => ({
         applications: state.applications.filter(a => a.id !== id),
       })),
+
+      setEditMode: (on) => set({ editMode: on }),
 
       reset: () => set(initialState),
     }),
