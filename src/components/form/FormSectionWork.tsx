@@ -138,7 +138,7 @@ export default function FormSectionWork() {
                 {jdAnalysis && jdAnalysis.missingKeywords.length > 0 && (
                   <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
                     <span style={{ fontSize:11, color:'#9ca3af' }}>JD缺失词：</span>
-                    {jdAnalysis.missingKeywords.map(k => {
+                    {Array.from(new Set(jdAnalysis.missingKeywords)).map(k => {
                       const covered = coveredKeywords.includes(k);
                       return (
                         <span key={k} style={{
