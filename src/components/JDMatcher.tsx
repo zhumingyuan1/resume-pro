@@ -380,7 +380,7 @@ export default function JDMatcher({ onStart }: { onStart: () => void }) {
                     <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>（点击直接添加到技能标签）</span>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {result.missing.map(w => (
+                    {[...new Set(result.missing)].map(w => (
                       <button
                         key={w}
                         onClick={() => {

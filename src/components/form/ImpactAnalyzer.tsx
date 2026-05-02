@@ -170,9 +170,16 @@ export default function ImpactAnalyzer() {
       .filter(r => r.source !== 'ai')
       .map(r => `• ${r.dimension}：${r.value}`);
 
+    if (selectedTexts.length === 0) {
+      alert('请至少选择一条有具体数据的量化结果');
+      return;
+    }
+
     // 找到有实质内容的工作/项目条目（有公司名或职位名）
-    const validWorkEntry = (liveResume.work || []).find(w => w.company?.trim() || w.position?.trim());
-    const validProjectEntry = (liveResume.projects || []).find(p => p.name?.trim() || p.role?.trim());
+    const workList = liveResume.work || [];
+    const projList = liveResume.projects || [];
+    const validWorkEntry = workList.find(w => w.company?.trim() || w.position?.trim());
+    const validProjectEntry = projList.find(p => p.name?.trim() || p.role?.trim());
 
     if (selectedTexts.length === 0) {
       alert('请至少选择一条有具体数据的量化结果');
