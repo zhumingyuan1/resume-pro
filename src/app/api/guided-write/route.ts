@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 interface GuidedWriteRequest {
-  type: 'work' | 'project' | 'summary';
+  type: 'work' | 'project' | 'summary' | 'extract';
   /** 用户的原始回答（口语化） */
-  answers: string[];
+  answers?: string[];
+  /** type=extract 时使用：直接传入大白话 */
+  rawText?: string;
   /** 如果有 JD 分析，一并传入以保证关键词命中 */
   jdAnalysis?: {
     matchedKeywords: string[];
     missingKeywords: string[];
   };
-  /** 已有经历摘要（用于判断重复或接续） */
-  existingSummary?: string;
 }
 
 // 根据类型返回引导问题
@@ -29,7 +29,6 @@ function getQuestions(type: 'work' | 'project' | 'summary') {
       '项目的结果怎么样？有没有什么可量化的成果（获奖/上线/性能提升/用户量等）？',
     ];
   }
-  // summary
   return [
     '你的专业是什么？大概有什么样的技术背景？',
     '最有成就感的一件事是什么？哪怕不是技术相关的也行。',
@@ -84,6 +83,75 @@ async function translateToResume(
   return data.choices?.[0]?.message?.content || '';
 }
 
+// 从大白话中提取结构化信息
+async function extractFromRawText(rawText: string): Promise<any> {
+  const prompt = `你是一个经历信息提取器。用户用大白话描述了一段经历，请从中提取结构化信息。
+
+直接输出合法JSON，不要任何前缀说明，格式如下：
+{
+  "type": "job" | "project" | "campus",
+  "companyOrProject": "公司/项目名称（如果从描述中能提取的话）",
+  "positionOrRole": "岗位/角色",
+  "timeRange": "时间范围，例如 2024.03-2024.06",
+  "highlights": ["从经历中提炼出的STAR描述1", "描述2"],
+  "technologies": ["识别到的技术栈"],
+  "confidence": 0.0到1.0之间的置信度
+}
+
+分析这段经历：
+"${rawText}"
+
+规则：
+- type判断：提到实习/工作/全职/兼职/公司名→job；提到课程设计/比赛/开源/side project→project；其他（学生会/社团/志愿等）→campus
+- 如果描述中没有提到公司名或项目名，companyOrProject填"（待填写）"
+- timeRange如果描述中没提到，填""
+- highlights至少返回1条，长度控制在30-60字以内
+- technologies如果没有识别到，返回空数组[]
+
+直接输出JSON：`;
+
+  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY || ''}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个结构化信息提取器，输出合法的JSON格式，不要输出任何解释。',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 600,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || '';
+
+  try {
+    // 尝试解析 JSON
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+  } catch {
+    // 解析失败，返回 null
+  }
+  return null;
+}
+
 // 评估经历对 JD 的覆盖度
 function assessJdCoverage(
   content: string,
@@ -102,18 +170,42 @@ function assessJdCoverage(
 export async function POST(req: NextRequest) {
   try {
     const body: GuidedWriteRequest = await req.json();
-    const { type, answers, jdAnalysis } = body;
+    const { type, answers, rawText } = body;
 
+    // extract 模式：从大白话直接提取结构化信息
+    if (type === 'extract') {
+      if (!rawText?.trim()) {
+        return NextResponse.json({ error: '请输入经历描述' }, { status: 400 });
+      }
+      const data = await extractFromRawText(rawText.trim());
+      if (!data) {
+        return NextResponse.json({ success: false, error: 'AI解析失败，请重试' }, { status: 500 });
+      }
+      return NextResponse.json({
+        success: true,
+        type: 'extract',
+        data: {
+          type: data.type || 'job',
+          companyOrProject: data.companyOrProject || '',
+          positionOrRole: data.positionOrRole || '',
+          timeRange: data.timeRange || '',
+          highlights: Array.isArray(data.highlights) ? data.highlights : [rawText.trim()],
+          technologies: Array.isArray(data.technologies) ? data.technologies : [],
+        },
+      });
+    }
+
+    // 原有模式
     if (!['work', 'project', 'summary'].includes(type)) {
       return NextResponse.json({ error: '无效的类型' }, { status: 400 });
     }
-
     if (!answers?.length) {
       return NextResponse.json({ error: '请至少回答一个问题' }, { status: 400 });
     }
 
+    const jdAnalysis = body.jdAnalysis;
     const [generated, jdCoverage] = await Promise.all([
-      translateToResume(type, answers, jdAnalysis),
+      translateToResume(type as 'work' | 'project' | 'summary', answers, jdAnalysis),
       Promise.resolve(assessJdCoverage(answers.join(' '), jdAnalysis)),
     ]);
 

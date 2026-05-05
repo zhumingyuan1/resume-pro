@@ -1,440 +1,350 @@
 'use client';
-// @ts-nocheck
 
 import { useState, useRef, useCallback } from 'react';
 import { useResumeStore } from '@/lib/resume-store';
-import type { JdAnalysis } from '@/types/resume';
+import type { Resume } from '@/types/resume';
 
-// ──── 可编辑文字组件（textarea覆盖层，天然支持粘贴/回车/Esc） ────
-function EditableField({ value, onSave, editMode, multiLine = false }: {
+interface EditTarget {
+  type: 'profile.name' | 'profile.titles' | 'profile.email' | 'profile.phone' | 'profile.location' | 'profile.summary'
+    | 'work' | 'project' | 'education';
+  id?: string;
+  key?: string;
+  label: string;
   value: string;
-  onSave: (v: string) => void;
-  editMode: boolean;
-  multiLine?: boolean;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  const handleClick = useCallback(() => {
-    if (!editMode) return;
-    setDraft(value);
-    setEditing(true);
-    // 聚焦到textarea
-    setTimeout(() => {
-      ref.current?.focus();
-      ref.current?.select();
-    }, 0);
-  }, [editMode, value]);
-
-  const handleBlur = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
-    const trimmed = e.target.value.trim();
-    if (trimmed !== value) onSave(trimmed);
-    setEditing(false);
-  }, [value, onSave]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Escape') {
-      setEditing(false);
-    }
-    if (!multiLine && e.key === 'Enter') {
-      e.preventDefault();
-      ref.current?.blur();
-    }
-  }, [multiLine]);
-
-  const style: React.CSSProperties = {
-    // 容器
-    position: 'relative',
-    display: multiLine ? 'block' : 'inline',
-    // textarea覆盖层
-    width: '100%',
-    minHeight: multiLine ? '2em' : '1.5em',
-    boxSizing: 'border-box',
-  };
-
-  const textareaStyle: React.CSSProperties = {
-    position: editing ? 'absolute' : 'relative',
-    top: 0,
-    left: 0,
-    width: '100%',
-    minHeight: multiLine ? '2em' : '1.5em',
-    background: 'rgba(255,255,255,0.97)',
-    border: '2px solid #2563eb',
-    borderRadius: 4,
-    padding: '1px 4px',
-    fontFamily: 'inherit',
-    fontSize: 'inherit',
-    fontWeight: 'inherit',
-    lineHeight: 'inherit',
-    letterSpacing: 'inherit',
-    color: '#1e293b',
-    outline: 'none',
-    resize: 'none',
-    overflow: multiLine ? 'auto' : 'hidden',
-    zIndex: editing ? 10 : 0,
-    boxShadow: '0 0 0 3px rgba(37,99,235,0.15)',
-    fieldSizing: 'content' as any,
-    whiteSpace: multiLine ? 'pre-wrap' : 'nowrap',
-  };
-
-  return (
-    <span style={style} onClick={handleClick}>
-      {/* 原文字（编辑时透明） */}
-      <span style={{
-        visibility: editing ? 'hidden' : 'visible',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        color: value ? 'inherit' : '#94a3b8',
-        fontStyle: value ? 'normal' : 'italic',
-      }}>
-        {value || (editMode ? '点击填写' : '未填写')}
-      </span>
-
-      {/* textarea编辑层 */}
-      {editMode && (
-        <textarea
-          ref={ref}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          style={textareaStyle}
-          rows={multiLine ? 3 : 1}
-          placeholder="点击填写"
-        />
-      )}
-    </span>
-  );
+  placeholder: string;
+  multiline?: boolean;
 }
 
-// ──── 高亮描述可编辑 ────
-function EditableHighlight({ value, onSave, editMode }: {
-  value: string;
+// 微型编辑气泡
+function EditPopover({ target, onSave, onClose }: {
+  target: EditTarget;
   onSave: (v: string) => void;
-  editMode: boolean;
+  onClose: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const [value, setValue] = useState(target.value);
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  const handleClick = useCallback(() => {
-    if (!editMode) return;
-    setDraft(value);
-    setEditing(true);
-    setTimeout(() => { ref.current?.focus(); ref.current?.select(); }, 0);
-  }, [editMode, value]);
-
-  const handleBlur = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
-    const trimmed = e.target.value.trim();
-    if (trimmed !== value) onSave(trimmed);
-    setEditing(false);
-  }, [value, onSave]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Escape') setEditing(false);
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      ref.current?.blur();
-    }
-  }, []);
-
   return (
-    <span
-      onClick={handleClick}
-      style={{ position: 'relative', display: 'block', cursor: editMode ? 'text' : 'default' }}
-    >
-      <span style={{
-        visibility: editing ? 'hidden' : 'visible',
-        color: '#374151',
-        lineHeight: 1.65,
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200,
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      paddingTop: 80,
+    }}>
+      {/* 遮罩 */}
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} />
+
+      {/* 气泡卡片 */}
+      <div style={{
+        position: 'relative', zIndex: 1,
+        width: '100%', maxWidth: 480,
+        background: '#fff', borderRadius: 16,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+        overflow: 'hidden',
       }}>
-        {value}
-      </span>
-      {editMode && (
-        <textarea
-          ref={ref}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            minHeight: '2.5em',
-            background: 'rgba(255,251,235,0.97)',
-            border: '2px solid #f59e0b',
-            borderRadius: 4,
-            padding: '1px 6px',
-            fontFamily: 'inherit',
-            fontSize: 'inherit',
-            fontWeight: 'inherit',
-            lineHeight: 1.65,
-            color: '#374151',
-            outline: 'none',
-            resize: 'none',
-            zIndex: 10,
-            boxShadow: '0 0 0 3px rgba(245,158,11,0.12)',
-            boxSizing: 'border-box',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}
-          rows={3}
-          placeholder="填写描述内容，支持回车换行"
-        />
-      )}
-    </span>
-  );
-}
-
-export default function ResumePreview() {
-  const { currentResume, selectedTemplate, jdAnalysis, editMode, updateResume } = useResumeStore();
-  const resume = currentResume;
-
-  if (!resume) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-[297mm] text-slate-400">
-        <p>左边填写内容，预览会实时显示</p>
-      </div>
-    );
-  }
-
-  const health = computeHealth(resume, jdAnalysis);
-
-  const patch = useCallback((updates: any) => {
-    updateResume(resume.id, updates);
-  }, [resume.id, updateResume]);
-
-  const patchProfile = useCallback((key: string, val: any) => {
-    patch({ profile: { ...resume.profile, [key]: val } });
-  }, [patch, resume.profile]);
-
-  const patchWork = useCallback((idx: number, key: string, val: string) => {
-    const updated = (resume.work || []).map((w: any, i: number) =>
-      i === idx ? { ...w, [key]: val } : w
-    );
-    patch({ work: updated });
-  }, [patch, resume.work]);
-
-  const patchWorkHighlight = useCallback((idx: number, hi: number, val: string) => {
-    const updated = (resume.work || []).map((w: any, i: number) => {
-      if (i !== idx) return w;
-      const highlights = (w.highlights || []).map((h: string, hi2: number) =>
-        hi2 === hi ? val : h
-      );
-      return { ...w, highlights };
-    });
-    patch({ work: updated });
-  }, [patch, resume.work]);
-
-  const patchEdu = useCallback((idx: number, key: string, val: string) => {
-    const updated = (resume.education || []).map((e: any, i: number) =>
-      i === idx ? { ...e, [key]: val } : e
-    );
-    patch({ education: updated });
-  }, [patch, resume.education]);
-
-  const patchProj = useCallback((idx: number, key: string, val: string) => {
-    const updated = (resume.projects || []).map((p: any, i: number) =>
-      i === idx ? { ...p, [key]: val } : p
-    );
-    patch({ projects: updated });
-  }, [patch, resume.projects]);
-
-  const patchProjHighlight = useCallback((idx: number, hi: number, val: string) => {
-    const updated = (resume.projects || []).map((p: any, i: number) => {
-      if (i !== idx) return p;
-      const highlights = (p.highlights || []).map((h: string, hi2: number) =>
-        hi2 === hi ? val : h
-      );
-      return { ...p, highlights };
-    });
-    patch({ projects: updated });
-  }, [patch, resume.projects]);
-
-  const patchSummary = useCallback((v: string) => {
-    patch({ profile: { ...resume.profile, summary: v } });
-  }, [patch, resume.profile]);
-
-  return (
-    <div style={{ position: 'relative', height: '100%' }}>
-      {editMode && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-          background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-          color: '#fff', textAlign: 'center', padding: '6px 12px',
-          fontSize: 12, fontWeight: 600,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}>
-          ✏️ 预览编辑模式 — 点击任意文字直接修改，Ctrl+V粘贴，Enter确认，Esc取消
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>编辑：{target.label}</span>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#9ca3af', padding: 0, lineHeight: 1 }}>×</button>
         </div>
-      )}
 
-      {health && (
-        <div style={{
-          position: 'absolute', top: editMode ? 36 : 8, right: 8, zIndex: 10,
-          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4,
-        }}>
-          {health.score !== null && (
-            <div style={{
-              padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-              background: health.score >= 80 ? '#ecfdf5' : health.score >= 60 ? '#fffbeb' : '#fef2f2',
-              color: health.score >= 80 ? '#10b981' : health.score >= 60 ? '#f59e0b' : '#ef4444',
-              border: `1px solid ${health.score >= 80 ? '#a7f3d0' : health.score >= 60 ? '#fde68a' : '#fecaca'}`,
-            }}>
-              健康度 {health.score}
-            </div>
+        {/* 输入区 */}
+        <div style={{ padding: '16px 20px' }}>
+          {target.multiline ? (
+            <textarea
+              ref={ref}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              rows={4}
+              placeholder={target.placeholder}
+              autoFocus
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '10px 14px', fontSize: 13, lineHeight: 1.7,
+                border: '1.5px solid #2563eb', borderRadius: 10, outline: 'none',
+                color: '#374151', background: '#f0f9ff',
+                resize: 'vertical', fontFamily: 'inherit',
+              }}
+            />
+          ) : (
+            <input
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              placeholder={target.placeholder}
+              autoFocus
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '10px 14px', fontSize: 13,
+                border: '1.5px solid #2563eb', borderRadius: 10, outline: 'none',
+                color: '#374151', background: '#f0f9ff',
+                fontFamily: 'inherit',
+              }}
+            />
           )}
-          {health.jdCoverage !== null && jdAnalysis && (
-            <div style={{
-              padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-              background: health.jdCoverage >= 50 ? '#eff6ff' : '#fef2f2',
-              color: health.jdCoverage >= 50 ? '#2563eb' : '#ef4444',
-              border: `1px solid ${health.jdCoverage >= 50 ? '#bfdbfe' : '#fecaca'}`,
-            }}>
-              JD覆盖 {health.jdCoverage}%
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+            {target.multiline ? '支持多行，回车换行' : 'Enter 确认，Esc 取消'}
+          </div>
         </div>
-      )}
 
-      <div style={{ paddingTop: editMode ? 36 : 0, transition: 'padding-top 0.2s' }}>
-        {selectedTemplate === 'template-2' ? (
-          <Template2E resume={resume} editMode={editMode} patchProfile={patchProfile} patchSummary={patchSummary} patchWork={patchWork} patchWorkHighlight={patchWorkHighlight} patchEdu={patchEdu} />
-        ) : selectedTemplate === 'template-3' ? (
-          <Template3E resume={resume} editMode={editMode} patchProfile={patchProfile} patchSummary={patchSummary} patchWork={patchWork} patchWorkHighlight={patchWorkHighlight} patchEdu={patchEdu} />
-        ) : selectedTemplate === 'template-4' ? (
-          <Template4E resume={resume} editMode={editMode} patchProfile={patchProfile} patchSummary={patchSummary} patchWork={patchWork} patchWorkHighlight={patchWorkHighlight} patchEdu={patchEdu} />
-        ) : selectedTemplate === 'template-5' ? (
-          <Template5E resume={resume} editMode={editMode} patchProfile={patchProfile} patchSummary={patchSummary} patchWork={patchWork} patchWorkHighlight={patchWorkHighlight} patchEdu={patchEdu} patchProj={patchProj} patchProjHighlight={patchProjHighlight} />
-        ) : (
-          <Template1E resume={resume} editMode={editMode} patchProfile={patchProfile} patchSummary={patchSummary} patchWork={patchWork} patchWorkHighlight={patchWorkHighlight} patchEdu={patchEdu} patchProj={patchProj} patchProjHighlight={patchProjHighlight} />
-        )}
+        {/* 底部按钮 */}
+        <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 10 }}>
+          <button
+            onClick={onClose}
+            style={{ flex: 1, padding: '9px', fontSize: 13, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', color: '#6b7280' }}
+          >
+            取消
+          </button>
+          <button
+            onClick={() => { onSave(value); onClose(); }}
+            style={{ flex: 2, padding: '9px', fontSize: 13, fontWeight: 600, background: 'linear-gradient(135deg, #2563eb, #4f46e5)', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer' }}
+          >
+            ✓ 保存
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-// ──── 模板1：技术岗 ────
-function Template1E({ resume, editMode, patchProfile, patchSummary, patchWork, patchWorkHighlight, patchEdu, patchProj, patchProjHighlight }: any) {
-  const p = resume.profile || {};
+// 可点击的预览字段
+function ClickField({ label, value, onClick, placeholder = '点击填写' }: {
+  label: string;
+  value: string;
+  onClick: () => void;
+  placeholder?: string;
+}) {
+  const [hover, setHover] = useState(false);
   return (
-    <div className="flex" style={{ minHeight: '297mm', fontFamily: 'system-ui, sans-serif' }}>
-      <div className="w-[30%] bg-slate-800 text-white p-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-2"><EditableField value={p.name} onSave={(v) => patchProfile('name', v)} editMode={editMode} /></h1>
-          <p className="text-base text-slate-300 mb-3"><EditableField value={p.titles?.default || ''} onSave={(v) => patchProfile('titles', { ...p.titles, default: v })} editMode={editMode} /></p>
-          <div className="space-y-1 text-sm text-slate-300">
-            <p><EditableField value={p.email || ''} onSave={(v) => patchProfile('email', v)} editMode={editMode} /></p>
-            <p><EditableField value={p.phone || ''} onSave={(v) => patchProfile('phone', v)} editMode={editMode} /></p>
-            <p><EditableField value={p.location || ''} onSave={(v) => patchProfile('location', v)} editMode={editMode} /></p>
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        cursor: 'pointer',
+        padding: hover ? '2px 4px' : '0',
+        borderRadius: 4,
+        border: hover ? '1px solid #bfdbfe' : '1px solid transparent',
+        transition: 'all 0.1s',
+        display: 'inline',
+      }}
+      title={`点击编辑${label}`}
+    >
+      <span style={{ color: value ? 'inherit' : '#d1d5db', fontStyle: value ? 'normal' : 'italic' }}>
+        {value || placeholder}
+      </span>
+    </div>
+  );
+}
+
+export default function ResumePreview() {
+  const { currentResume, selectedTemplate, jdAnalysis, updateResume } = useResumeStore();
+  const resume: Resume | null = currentResume;
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+
+  if (!resume) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9ca3af', fontSize: 13 }}>
+        左边填写内容，预览实时显示
+      </div>
+    );
+  }
+
+  const health = computeHealth(resume);
+  const p = resume.profile || {};
+
+  // 打开编辑
+  const openEdit = (target: EditTarget) => setEditTarget(target);
+  const closeEdit = () => setEditTarget(null);
+
+  // 保存编辑
+  const saveEdit = useCallback((newValue: string) => {
+    if (!resume || !editTarget) return;
+    if (editTarget.type === 'profile.name') {
+      updateResume(resume.id, { profile: { ...p, name: newValue } });
+    } else if (editTarget.type === 'profile.titles') {
+      updateResume(resume.id, { profile: { ...p, titles: { ...p.titles, default: newValue } } });
+    } else if (editTarget.type === 'profile.email') {
+      updateResume(resume.id, { profile: { ...p, email: newValue } });
+    } else if (editTarget.type === 'profile.phone') {
+      updateResume(resume.id, { profile: { ...p, phone: newValue } });
+    } else if (editTarget.type === 'profile.location') {
+      updateResume(resume.id, { profile: { ...p, location: newValue } });
+    } else if (editTarget.type === 'profile.summary') {
+      updateResume(resume.id, { profile: { ...p, summary: newValue } });
+    }
+  }, [resume, editTarget, p, updateResume]);
+
+  // 删除条目
+  const deleteEntry = useCallback((type: 'work' | 'project' | 'education', id: string) => {
+    if (!resume) return;
+    if (type === 'work') updateResume(resume.id, { work: (resume.work || []).filter(w => w.id !== id) });
+    if (type === 'project') updateResume(resume.id, { projects: (resume.projects || []).filter(p => p.id !== id) });
+    if (type === 'education') updateResume(resume.id, { education: (resume.education || []).filter(e => e.id !== id) });
+  }, [resume, updateResume]);
+
+  // 添加条目
+  const addEntry = useCallback((type: 'work' | 'project' | 'education') => {
+    if (!resume) return;
+    if (type === 'work') {
+      const item = { id: crypto.randomUUID(), company: '', position: '', startDate: '', endDate: '', current: false, highlights: [], summary: '' };
+      updateResume(resume.id, { work: [...(resume.work || []), item] });
+    } else if (type === 'project') {
+      const item = { id: crypto.randomUUID(), name: '', role: '', startDate: '', endDate: '', current: false, highlights: [], technologies: [], description: '' };
+      updateResume(resume.id, { projects: [...(resume.projects || []), item] });
+    } else if (type === 'education') {
+      const item = { id: crypto.randomUUID(), institution: '', degree: '', field: '', startDate: '', endDate: '', current: false, summary: '' };
+      updateResume(resume.id, { education: [...(resume.education || []), item] });
+    }
+  }, [resume, updateResume]);
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', background: '#e2e8f0', padding: '12px' }}>
+      {/* 顶部状态 */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '0 4px' }}>
+        <div style={{ fontSize: 11, color: '#94a3b8' }}>点击简历任意文字可直接编辑</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {health && (
+            <div style={{
+              padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+              background: health.score >= 80 ? '#ecfdf5' : health.score >= 60 ? '#fffbeb' : '#fef2f2',
+              color: health.score >= 80 ? '#10b981' : health.score >= 60 ? '#f59e0b' : '#ef4444',
+            }}>
+              健康度 {health.score}
+            </div>
+          )}
+          {jdAnalysis && (
+            <div style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: '#eff6ff', color: '#2563eb' }}>
+              JD {jdAnalysis.score}%
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 简历主体 */}
+      <div style={{ background: '#fff', boxShadow: '0 8px 40px rgba(0,0,0,0.12)', borderRadius: 3, overflow: 'hidden', minHeight: 700 }}>
+        {selectedTemplate === 'template-2' ? (
+          <TemplateFinance resume={resume} p={p} openEdit={openEdit} addEntry={addEntry} deleteEntry={deleteEntry} />
+        ) : selectedTemplate === 'template-3' ? (
+          <TemplateMinimal resume={resume} p={p} openEdit={openEdit} addEntry={addEntry} deleteEntry={deleteEntry} />
+        ) : selectedTemplate === 'template-4' ? (
+          <TemplateGov resume={resume} p={p} openEdit={openEdit} addEntry={addEntry} deleteEntry={deleteEntry} />
+        ) : selectedTemplate === 'template-5' ? (
+          <TemplateCreative resume={resume} p={p} openEdit={openEdit} addEntry={addEntry} deleteEntry={deleteEntry} />
+        ) : (
+          <TemplateTech resume={resume} p={p} openEdit={openEdit} addEntry={addEntry} deleteEntry={deleteEntry} />
+        )}
+      </div>
+
+      {/* 编辑气泡 */}
+      {editTarget && (
+        <EditPopover
+          target={editTarget}
+          onSave={saveEdit}
+          onClose={closeEdit}
+        />
+      )}
+    </div>
+  );
+}
+
+// ──── 模板1：技术岗 ────
+function TemplateTech({ resume, p, openEdit, addEntry, deleteEntry }: any) {
+  return (
+    <div style={{ display: 'flex', minHeight: 700, fontFamily: 'system-ui, sans-serif' }}>
+      {/* 左侧栏 */}
+      <div style={{ width: '30%', background: '#1e3a5f', color: '#fff', padding: 28 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6, cursor: 'pointer' }}
+          onClick={() => openEdit({ type: 'profile.name', label: '姓名', value: p.name || '', placeholder: '输入姓名' })}>
+          <span style={{ color: p.name ? '#fff' : '#64748b' }}>{p.name || '未填写姓名'}</span>
+        </h1>
+        <div style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.titles', label: '求职目标', value: p.titles?.default || '', placeholder: '输入求职目标' })}>
+          <span style={{ fontSize: 13, color: '#93c5fd' }}>{p.titles?.default || '未填写求职目标'}</span>
+        </div>
+        <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.8, marginTop: 12 }}>
+          <div style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.email', label: '邮箱', value: p.email || '', placeholder: '输入邮箱' })}>
+            <span style={{ color: p.email ? '#e2e8f0' : '#64748b' }}>{p.email || '点击填写邮箱'}</span>
+          </div>
+          <div style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.phone', label: '电话', value: p.phone || '', placeholder: '输入电话' })}>
+            <span style={{ color: p.phone ? '#e2e8f0' : '#64748b' }}>{p.phone || '点击填写电话'}</span>
+          </div>
+          <div style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.location', label: '所在地', value: p.location || '', placeholder: '输入所在地' })}>
+            <span style={{ color: p.location ? '#e2e8f0' : '#64748b' }}>{p.location || '点击填写所在地'}</span>
           </div>
         </div>
+
         {(resume.skills || []).length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-slate-400">技能</h2>
-            <div className="space-y-3">
-              {(resume.skills || []).map((cat: any) => (
-                <div key={cat.id}>
-                  <p className="text-xs font-medium text-slate-300 mb-1">{cat.category}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {(cat.skills || []).map((s: any, i: number) => <span key={i} className="text-xs px-2 py-0.5 bg-slate-700 rounded text-slate-300">{s.name}</span>)}
-                  </div>
+          <div style={{ marginTop: 24 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#93c5fd', letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' }}>技能</div>
+            {(resume.skills || []).map((cat: any) => (
+              <div key={cat.id} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{cat.category}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {(cat.skills || []).map((s: any, i: number) => (
+                    <span key={i} style={{ fontSize: 11, padding: '2px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: 4, color: '#e2e8f0' }}>{s.name}</span>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
-      <div className="flex-1 p-6 bg-white">
+
+      {/* 右侧内容 */}
+      <div style={{ flex: 1, padding: 28 }}>
         {p.summary && (
-          <div className="mb-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wider mb-2 text-slate-800 border-b border-slate-200 pb-1">个人简介</h2>
-            <p className="text-sm text-slate-600 leading-relaxed mt-2"><EditableField value={p.summary} onSave={patchSummary} editMode={editMode} multiLine /></p>
-          </div>
+          <Section title="个人简介" onEdit={() => openEdit({ type: 'profile.summary', label: '个人简介', value: p.summary, placeholder: '输入个人简介', multiline: true })}>
+            <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.7 }}>{p.summary}</p>
+          </Section>
         )}
+
         {(resume.work || []).length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wider mb-3 text-slate-800 border-b border-slate-200 pb-1">工作经历</h2>
-            <div className="space-y-4">
-              {(resume.work || []).map((job: any, idx: number) => (
-                <div key={job.id}>
-                  <div className="flex justify-between items-baseline mb-1 flex-wrap gap-1">
-                    <div>
-                      <span className="font-semibold text-slate-900"><EditableField value={job.position} onSave={(v) => patchWork(idx, 'position', v)} editMode={editMode} /></span>
-                      <span className="text-slate-500"> · </span>
-                      <span className="text-slate-700"><EditableField value={job.company} onSave={(v) => patchWork(idx, 'company', v)} editMode={editMode} /></span>
-                    </div>
-                    <span className="text-xs text-slate-400 flex gap-1">
-                      <EditableField value={job.startDate} onSave={(v) => patchWork(idx, 'startDate', v)} editMode={editMode} />
-                      {' - '}
-                      <EditableField value={job.endDate === 'present' ? '至今' : (job.endDate || '')} onSave={(v) => patchWork(idx, 'endDate', v === '至今' ? 'present' : v)} editMode={editMode} />
-                    </span>
-                  </div>
-                  <ul className="space-y-1">
-                    {(job.highlights || []).filter(Boolean).map((hl: string, hi: number) => (
-                      <li key={hi} className="text-sm text-slate-600 flex items-start gap-2">
-                        <span className="text-slate-400 mt-0.5">•</span>
-                        <EditableHighlight value={hl} onSave={(v) => patchWorkHighlight(idx, hi, v)} editMode={editMode} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
+          <Section title="工作经历" onAdd={() => addEntry('work')}>
+            {(resume.work || []).map((job: any) => (
+              <EntryCard key={job.id} onDelete={() => deleteEntry('work', job.id)}>
+                <EntryHeader
+                  company={job.company}
+                  position={job.position}
+                  start={job.startDate}
+                  end={job.current ? '至今' : job.endDate}
+                />
+                {(job.highlights || []).map((h: string, i: number) => (
+                  <Bullet key={i} text={h} />
+                ))}
+              </EntryCard>
+            ))}
+          </Section>
         )}
+
         {(resume.education || []).length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wider mb-3 text-slate-800 border-b border-slate-200 pb-1">教育背景</h2>
-            <div className="space-y-2">
-              {(resume.education || []).map((e: any, idx: number) => (
-                <div key={e.id} className="flex flex-col gap-1">
-                  <div className="flex justify-between items-baseline flex-wrap gap-1">
-                    <div>
-                      <span className="font-semibold text-slate-900"><EditableField value={e.institution} onSave={(v) => patchEdu(idx, 'institution', v)} editMode={editMode} /></span>
-                      <span className="text-slate-500 ml-2">
-                        <EditableField value={e.degree} onSave={(v) => patchEdu(idx, 'degree', v)} editMode={editMode} />
-                        {' · '}
-                        <EditableField value={e.field} onSave={(v) => patchEdu(idx, 'field', v)} editMode={editMode} />
-                      </span>
-                      {e.gpa && <span className="text-xs text-slate-400 ml-2">GPA {e.gpa}</span>}
-                    </div>
-                    <span className="text-xs text-slate-400 flex gap-1">
-                      <EditableField value={e.startDate} onSave={(v) => patchEdu(idx, 'startDate', v)} editMode={editMode} />
-                      {' - '}
-                      <EditableField value={e.endDate || ''} onSave={(v) => patchEdu(idx, 'endDate', v)} editMode={editMode} />
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <Section title="教育背景" onAdd={() => addEntry('education')}>
+            {(resume.education || []).map((e: any) => (
+              <EntryCard key={e.id} onDelete={() => deleteEntry('education', e.id)}>
+                <EntryHeader company={e.institution} position={`${e.degree || ''} ${e.field || ''}`} start={e.startDate} end={e.endDate} />
+              </EntryCard>
+            ))}
+          </Section>
         )}
+
         {(resume.projects || []).length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wider mb-3 text-slate-800 border-b border-slate-200 pb-1">项目经历</h2>
-            <div className="space-y-3">
-              {(resume.projects || []).map((proj: any, idx: number) => (
-                <div key={proj.id}>
-                  <div className="flex justify-between items-baseline mb-1">
-                    <span className="font-semibold text-slate-900"><EditableField value={proj.name} onSave={(v) => patchProj(idx, 'name', v)} editMode={editMode} /></span>
-                    {proj.role && <span className="text-xs text-slate-400"><EditableField value={proj.role} onSave={(v) => patchProj(idx, 'role', v)} editMode={editMode} /></span>}
-                  </div>
-                  {(proj.technologies || []).length > 0 && <p className="text-xs text-slate-400 mb-1">技术栈：{(proj.technologies || []).join(' / ')}</p>}
-                  <ul className="space-y-1">
-                    {(proj.highlights || []).filter(Boolean).map((hl: string, hi: number) => (
-                      <li key={hi} className="text-sm text-slate-600 flex items-start gap-2">
-                        <span className="text-slate-400 mt-0.5">•</span>
-                        <EditableHighlight value={hl} onSave={(v) => patchProjHighlight(idx, hi, v)} editMode={editMode} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
+          <Section title="项目经历" onAdd={() => addEntry('project')}>
+            {(resume.projects || []).map((proj: any) => (
+              <EntryCard key={proj.id} onDelete={() => deleteEntry('project', proj.id)}>
+                <EntryHeader company={proj.name} position={proj.role} />
+                {(proj.highlights || []).map((h: string, i: number) => (
+                  <Bullet key={i} text={h} />
+                ))}
+              </EntryCard>
+            ))}
+          </Section>
+        )}
+
+        {/* 空状态 */}
+        {(resume.work || []).length === 0 && (resume.projects || []).length === 0 && (resume.education || []).length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#d1d5db' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+            <div style={{ fontSize: 13 }}>左侧「写经历」添加内容</div>
           </div>
         )}
       </div>
@@ -443,359 +353,245 @@ function Template1E({ resume, editMode, patchProfile, patchSummary, patchWork, p
 }
 
 // ──── 模板2：金融 ────
-function Template2E({ resume, editMode, patchProfile, patchSummary, patchWork, patchWorkHighlight, patchEdu }: any) {
-  const p = resume.profile || {};
+function TemplateFinance({ resume, p, openEdit, addEntry, deleteEntry }: any) {
   return (
-    <div className="p-6 bg-white" style={{ minHeight: '297mm', fontFamily: 'system-ui, sans-serif' }}>
-      <div className="text-center mb-4 border-b border-slate-300 pb-4">
-        <h1 className="text-2xl font-bold text-slate-900 mb-1"><EditableField value={p.name} onSave={(v) => patchProfile('name', v)} editMode={editMode} /></h1>
-        <p className="text-sm text-slate-600"><EditableField value={p.titles?.default || ''} onSave={(v) => patchProfile('titles', { ...p.titles, default: v })} editMode={editMode} /></p>
-        <div className="flex justify-center gap-4 mt-2 text-xs text-slate-500">
-          <span><EditableField value={p.email || ''} onSave={(v) => patchProfile('email', v)} editMode={editMode} /></span>
-          <span><EditableField value={p.phone || ''} onSave={(v) => patchProfile('phone', v)} editMode={editMode} /></span>
-          <span><EditableField value={p.location || ''} onSave={(v) => patchProfile('location', v)} editMode={editMode} /></span>
+    <div style={{ padding: 32, background: '#fff', minHeight: 700, fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ textAlign: 'center', marginBottom: 24, borderBottom: '2px solid #1e3a5f', paddingBottom: 16 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', marginBottom: 4, cursor: 'pointer' }}
+          onClick={() => openEdit({ type: 'profile.name', label: '姓名', value: p.name || '', placeholder: '输入姓名' })}>
+          {p.name || '未填写姓名'}
+        </h1>
+        <div style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.titles', label: '求职目标', value: p.titles?.default || '', placeholder: '输入求职目标' })}>
+          <span style={{ fontSize: 13, color: '#475569' }}>{p.titles?.default || '未填写求职目标'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: 12, color: '#64748b' }}>
+          <span style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.email', label: '邮箱', value: p.email || '', placeholder: '邮箱' })}>{p.email || '邮箱'}</span>
+          <span style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.phone', label: '电话', value: p.phone || '', placeholder: '电话' })}>{p.phone || '电话'}</span>
         </div>
       </div>
       {p.summary && (
-        <div className="mb-4">
-          <h2 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-1 mb-2">个人简介</h2>
-          <p className="text-xs text-slate-600 leading-relaxed"><EditableField value={p.summary} onSave={patchSummary} editMode={editMode} multiLine /></p>
-        </div>
+        <Section title="个人简介" onEdit={() => openEdit({ type: 'profile.summary', label: '个人简介', value: p.summary, placeholder: '输入个人简介', multiline: true })}>
+          <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.7 }}>{p.summary}</p>
+        </Section>
       )}
       {(resume.work || []).length > 0 && (
-        <div className="mb-4">
-          <h2 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-1 mb-2">工作经历</h2>
-          {(resume.work || []).map((job: any, idx: number) => (
-            <div key={job.id} className="mb-3">
-              <div className="flex justify-between items-baseline">
-                <span className="font-medium text-slate-900 text-sm"><EditableField value={job.company} onSave={(v) => patchWork(idx, 'company', v)} editMode={editMode} /></span>
-                <span className="text-xs text-slate-400">
-                  <EditableField value={job.startDate} onSave={(v) => patchWork(idx, 'startDate', v)} editMode={editMode} />
-                  {' - '}
-                  <EditableField value={job.endDate === 'present' ? '至今' : (job.endDate || '')} onSave={(v) => patchWork(idx, 'endDate', v === '至今' ? 'present' : v)} editMode={editMode} />
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mb-1"><EditableField value={job.position} onSave={(v) => patchWork(idx, 'position', v)} editMode={editMode} /></p>
-              {(job.highlights || []).filter(Boolean).map((hl: string, hi: number) => (
-                <p key={hi} className="text-xs text-slate-600 leading-relaxed">• <EditableHighlight value={hl} onSave={(v) => patchWorkHighlight(idx, hi, v)} editMode={editMode} /></p>
-              ))}
-            </div>
+        <Section title="工作经历" onAdd={() => addEntry('work')}>
+          {(resume.work || []).map((job: any) => (
+            <EntryCard key={job.id} onDelete={() => deleteEntry('work', job.id)}>
+              <EntryHeader company={job.company} position={job.position} start={job.startDate} end={job.current ? '至今' : job.endDate} />
+              {(job.highlights || []).map((h: string, i: number) => <Bullet key={i} text={h} />)}
+            </EntryCard>
           ))}
-        </div>
+        </Section>
       )}
       {(resume.education || []).length > 0 && (
-        <div className="mb-4">
-          <h2 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-1 mb-2">教育背景</h2>
-          {(resume.education || []).map((e: any, idx: number) => (
-            <div key={e.id} className="flex justify-between text-xs">
-              <span className="text-slate-900">
-                <EditableField value={e.institution} onSave={(v) => patchEdu(idx, 'institution', v)} editMode={editMode} />
-                {' '}
-                <EditableField value={e.degree} onSave={(v) => patchEdu(idx, 'degree', v)} editMode={editMode} />
-                {' · '}
-                <EditableField value={e.field} onSave={(v) => patchEdu(idx, 'field', v)} editMode={editMode} />
-              </span>
-              <span className="text-slate-400">
-                <EditableField value={e.startDate} onSave={(v) => patchEdu(idx, 'startDate', v)} editMode={editMode} />
-                {' - '}
-                <EditableField value={e.endDate || ''} onSave={(v) => patchEdu(idx, 'endDate', v)} editMode={editMode} />
-              </span>
-            </div>
+        <Section title="教育背景" onAdd={() => addEntry('education')}>
+          {(resume.education || []).map((e: any) => (
+            <EntryCard key={e.id} onDelete={() => deleteEntry('education', e.id)}>
+              <EntryHeader company={e.institution} position={`${e.degree || ''} ${e.field || ''}`} start={e.startDate} end={e.endDate} />
+            </EntryCard>
           ))}
-        </div>
-      )}
-      {(resume.skills || []).length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-1 mb-2">技能</h2>
-          <div className="flex flex-wrap gap-2 text-xs">
-            {(resume.skills || []).flatMap((cat: any) => (cat.skills || []).map((s: any, i: number) => <span key={i} className="text-slate-600">{s.name}</span>))}
-          </div>
-        </div>
+        </Section>
       )}
     </div>
   );
 }
 
-// ──── 模板3：快消 ────
-function Template3E({ resume, editMode, patchProfile, patchSummary, patchWork, patchWorkHighlight, patchEdu }: any) {
-  const p = resume.profile || {};
+// ──── 模板3：简约 ────
+function TemplateMinimal({ resume, p, openEdit, addEntry, deleteEntry }: any) {
   return (
-    <div className="p-6 bg-orange-50" style={{ minHeight: '297mm', fontFamily: 'system-ui, sans-serif' }}>
-      <div className="flex items-center gap-4 mb-4">
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1"><EditableField value={p.name} onSave={(v) => patchProfile('name', v)} editMode={editMode} /></h1>
-          <p className="text-base text-orange-600 font-medium mb-2"><EditableField value={p.titles?.default || ''} onSave={(v) => patchProfile('titles', { ...p.titles, default: v })} editMode={editMode} /></p>
-          <div className="flex gap-3 text-xs text-slate-500">
-            <span><EditableField value={p.email || ''} onSave={(v) => patchProfile('email', v)} editMode={editMode} /></span>
-            <span><EditableField value={p.phone || ''} onSave={(v) => patchProfile('phone', v)} editMode={editMode} /></span>
-            <span><EditableField value={p.location || ''} onSave={(v) => patchProfile('location', v)} editMode={editMode} /></span>
-          </div>
-        </div>
+    <div style={{ padding: 32, background: '#fff', minHeight: 700, fontFamily: 'system-ui, sans-serif' }}>
+      <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', marginBottom: 4, cursor: 'pointer' }}
+        onClick={() => openEdit({ type: 'profile.name', label: '姓名', value: p.name || '', placeholder: '输入姓名' })}>
+        {p.name || '未填写姓名'}
+      </h1>
+      <div style={{ cursor: 'pointer', marginBottom: 20 }} onClick={() => openEdit({ type: 'profile.titles', label: '求职目标', value: p.titles?.default || '', placeholder: '输入求职目标' })}>
+        <span style={{ fontSize: 13, color: '#2563eb', fontWeight: 600 }}>{p.titles?.default || '未填写求职目标'}</span>
       </div>
-      {p.summary && (
-        <div className="mb-4 bg-white rounded-lg p-3">
-          <p className="text-sm text-slate-600 leading-relaxed"><EditableField value={p.summary} onSave={patchSummary} editMode={editMode} multiLine /></p>
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-lg p-4">
-          <h2 className="text-sm font-bold text-orange-600 mb-3">工作经历</h2>
-          {(resume.work || []).map((job: any, idx: number) => (
-            <div key={job.id} className="mb-3">
-              <p className="font-medium text-slate-900 text-sm">
-                <EditableField value={job.company} onSave={(v) => patchWork(idx, 'company', v)} editMode={editMode} />
-                {' · '}
-                <EditableField value={job.position} onSave={(v) => patchWork(idx, 'position', v)} editMode={editMode} />
-              </p>
-              <p className="text-xs text-slate-400 mb-1">
-                <EditableField value={job.startDate} onSave={(v) => patchWork(idx, 'startDate', v)} editMode={editMode} />
-                {' - '}
-                <EditableField value={job.endDate === 'present' ? '至今' : (job.endDate || '')} onSave={(v) => patchWork(idx, 'endDate', v === '至今' ? 'present' : v)} editMode={editMode} />
-              </p>
-              {(job.highlights || []).filter(Boolean).map((hl: string, hi: number) => (
-                <p key={hi} className="text-xs text-slate-600 leading-relaxed">• <EditableHighlight value={hl} onSave={(v) => patchWorkHighlight(idx, hi, v)} editMode={editMode} /></p>
-              ))}
-            </div>
+      {(resume.work || []).length > 0 && (
+        <Section title="工作经历" onAdd={() => addEntry('work')}>
+          {(resume.work || []).map((job: any) => (
+            <EntryCard key={job.id} onDelete={() => deleteEntry('work', job.id)}>
+              <EntryHeader company={job.company} position={job.position} start={job.startDate} end={job.current ? '至今' : job.endDate} />
+              {(job.highlights || []).map((h: string, i: number) => <Bullet key={i} text={h} />)}
+            </EntryCard>
           ))}
-        </div>
-        <div className="space-y-4">
-          <div className="bg-white rounded-lg p-4">
-            <h2 className="text-sm font-bold text-orange-600 mb-3">教育背景</h2>
-            {(resume.education || []).map((e: any, idx: number) => (
-              <div key={e.id} className="mb-2">
-                <p className="font-medium text-slate-900 text-sm"><EditableField value={e.institution} onSave={(v) => patchEdu(idx, 'institution', v)} editMode={editMode} /></p>
-                <p className="text-xs text-slate-500">
-                  <EditableField value={e.degree} onSave={(v) => patchEdu(idx, 'degree', v)} editMode={editMode} />
-                  {' · '}
-                  <EditableField value={e.field} onSave={(v) => patchEdu(idx, 'field', v)} editMode={editMode} />
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <h2 className="text-sm font-bold text-orange-600 mb-3">技能</h2>
-            {(resume.skills || []).map((cat: any) => (
-              <div key={cat.id} className="mb-2">
-                <p className="text-xs font-medium text-slate-700 mb-1">{cat.category}</p>
-                <div className="flex flex-wrap gap-1">
-                  {(cat.skills || []).map((s: any, i: number) => <span key={i} className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full">{s.name}</span>)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+        </Section>
+      )}
+      {(resume.education || []).length > 0 && (
+        <Section title="教育" onAdd={() => addEntry('education')}>
+          {(resume.education || []).map((e: any) => (
+            <EntryCard key={e.id} onDelete={() => deleteEntry('education', e.id)}>
+              <EntryHeader company={e.institution} position={`${e.degree || ''} ${e.field || ''}`} start={e.startDate} end={e.endDate} />
+            </EntryCard>
+          ))}
+        </Section>
+      )}
     </div>
   );
 }
 
 // ──── 模板4：国企 ────
-function Template4E({ resume, editMode, patchProfile, patchSummary, patchWork, patchWorkHighlight, patchEdu }: any) {
-  const p = resume.profile || {};
+function TemplateGov({ resume, p, openEdit, addEntry, deleteEntry }: any) {
   return (
-    <div className="p-6 bg-white" style={{ minHeight: '297mm', fontFamily: '宋体, serif' }}>
-      <table className="w-full text-xs mb-4 border-collapse">
-        <tbody>
-          <tr>
-            <td className="border border-slate-800 p-1 w-16">姓名</td>
-            <td className="border border-slate-800 p-1"><EditableField value={p.name} onSave={(v) => patchProfile('name', v)} editMode={editMode} /></td>
-            <td className="border border-slate-800 p-1 w-16">性别</td>
-            <td className="border border-slate-800 p-1 w-20"></td>
-          </tr>
-          <tr>
-            <td className="border border-slate-800 p-1">民族</td><td className="border border-slate-800 p-1"></td>
-            <td className="border border-slate-800 p-1">出生年月</td><td className="border border-slate-800 p-1"></td>
-          </tr>
-          <tr>
-            <td className="border border-slate-800 p-1">籍贯</td><td className="border border-slate-800 p-1"></td>
-            <td className="border border-slate-800 p-1">政治面貌</td><td className="border border-slate-800 p-1"></td>
-          </tr>
-          <tr>
-            <td className="border border-slate-800 p-1">电话</td>
-            <td className="border border-slate-800 p-1"><EditableField value={p.phone || ''} onSave={(v) => patchProfile('phone', v)} editMode={editMode} /></td>
-            <td className="border border-slate-800 p-1">邮箱</td>
-            <td className="border border-slate-800 p-1"><EditableField value={p.email || ''} onSave={(v) => patchProfile('email', v)} editMode={editMode} /></td>
-          </tr>
-        </tbody>
-      </table>
-      {p.summary && (
-        <div className="mb-4 text-xs">
-          <h2 className="font-bold border-b border-slate-800 pb-1 mb-1">个人评价</h2>
-          <p className="text-slate-700 leading-relaxed"><EditableField value={p.summary} onSave={patchSummary} editMode={editMode} multiLine /></p>
+    <div style={{ padding: 24, background: '#fff', minHeight: 700, fontFamily: '宋体, serif' }}>
+      <div style={{ borderBottom: '2px solid #0f172a', paddingBottom: 8, marginBottom: 16, textAlign: 'center' }}>
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', cursor: 'pointer' }}
+          onClick={() => openEdit({ type: 'profile.name', label: '姓名', value: p.name || '', placeholder: '输入姓名' })}>
+          {p.name || '未填写'}
+        </h1>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 6, fontSize: 12, color: '#374151' }}>
+          <span style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.phone', label: '电话', value: p.phone || '', placeholder: '电话' })}>电话：{p.phone || '—'}</span>
+          <span style={{ cursor: 'pointer' }} onClick={() => openEdit({ type: 'profile.email', label: '邮箱', value: p.email || '', placeholder: '邮箱' })}>邮箱：{p.email || '—'}</span>
         </div>
+      </div>
+      {p.summary && (
+        <Section title="个人评价" onEdit={() => openEdit({ type: 'profile.summary', label: '个人简介', value: p.summary, placeholder: '输入个人简介', multiline: true })}>
+          <p style={{ fontSize: 12, color: '#374151', lineHeight: 1.8 }}>{p.summary}</p>
+        </Section>
       )}
       {(resume.work || []).length > 0 && (
-        <div className="mb-3 text-xs">
-          <h2 className="font-bold border-b border-slate-800 pb-1 mb-1">主要学习及工作经历</h2>
-          {(resume.work || []).map((job: any, idx: number) => (
-            <div key={job.id} className="mb-2">
-              <p className="text-slate-700">
-                <EditableField value={job.startDate} onSave={(v) => patchWork(idx, 'startDate', v)} editMode={editMode} />
-                {' - '}
-                <EditableField value={job.endDate === 'present' ? '至今' : (job.endDate || '')} onSave={(v) => patchWork(idx, 'endDate', v === '至今' ? 'present' : v)} editMode={editMode} />
-                {' '}
-                <EditableField value={job.company} onSave={(v) => patchWork(idx, 'company', v)} editMode={editMode} />
-                {' '}
-                <EditableField value={job.position} onSave={(v) => patchWork(idx, 'position', v)} editMode={editMode} />
-              </p>
-              {(job.highlights || []).filter(Boolean).map((hl: string, hi: number) => (
-                <p key={hi} className="text-slate-600">• <EditableHighlight value={hl} onSave={(v) => patchWorkHighlight(idx, hi, v)} editMode={editMode} /></p>
-              ))}
-            </div>
+        <Section title="主要学习及工作经历" onAdd={() => addEntry('work')}>
+          {(resume.work || []).map((job: any) => (
+            <EntryCard key={job.id} onDelete={() => deleteEntry('work', job.id)}>
+              <EntryHeader company={job.company} position={job.position} start={job.startDate} end={job.current ? '至今' : job.endDate} />
+              {(job.highlights || []).map((h: string, i: number) => <Bullet key={i} text={h} />)}
+            </EntryCard>
           ))}
-        </div>
-      )}
-      {(resume.education || []).length > 0 && (
-        <div className="mb-3 text-xs">
-          <h2 className="font-bold border-b border-slate-800 pb-1 mb-1">教育背景</h2>
-          {(resume.education || []).map((e: any, idx: number) => (
-            <p key={e.id} className="text-slate-700 text-xs">
-              <EditableField value={e.startDate} onSave={(v) => patchEdu(idx, 'startDate', v)} editMode={editMode} />
-              {' - '}
-              <EditableField value={e.endDate || ''} onSave={(v) => patchEdu(idx, 'endDate', v)} editMode={editMode} />
-              {' '}
-              <EditableField value={e.institution} onSave={(v) => patchEdu(idx, 'institution', v)} editMode={editMode} />
-              {' '}
-              <EditableField value={e.degree} onSave={(v) => patchEdu(idx, 'degree', v)} editMode={editMode} />
-              {' '}
-              <EditableField value={e.field} onSave={(v) => patchEdu(idx, 'field', v)} editMode={editMode} />
-            </p>
-          ))}
-        </div>
-      )}
-      {(resume.skills || []).length > 0 && (
-        <div className="text-xs">
-          <h2 className="font-bold border-b border-slate-800 pb-1 mb-1">特长及其他</h2>
-          <p className="text-slate-600">{(resume.skills || []).flatMap((cat: any) => (cat.skills || []).map((s: any) => s.name)).join('、')}</p>
-        </div>
+        </Section>
       )}
     </div>
   );
 }
 
 // ──── 模板5：创意 ────
-function Template5E({ resume, editMode, patchProfile, patchSummary, patchWork, patchWorkHighlight, patchEdu, patchProj, patchProjHighlight }: any) {
-  const p = resume.profile || {};
+function TemplateCreative({ resume, p, openEdit, addEntry, deleteEntry }: any) {
   return (
-    <div className="p-6 bg-slate-50" style={{ minHeight: '297mm', fontFamily: 'system-ui, sans-serif' }}>
-      <div className="grid grid-cols-[200px_1fr] gap-4">
-        <div className="space-y-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900"><EditableField value={p.name} onSave={(v) => patchProfile('name', v)} editMode={editMode} /></h1>
-            <p className="text-sm text-indigo-600 italic"><EditableField value={p.titles?.default || ''} onSave={(v) => patchProfile('titles', { ...p.titles, default: v })} editMode={editMode} /></p>
+    <div style={{ display: 'flex', minHeight: 700, fontFamily: 'system-ui, sans-serif', background: '#f8fafc' }}>
+      <div style={{ width: 200, background: '#1e293b', color: '#fff', padding: 24 }}>
+        <h1 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4, cursor: 'pointer' }}
+          onClick={() => openEdit({ type: 'profile.name', label: '姓名', value: p.name || '', placeholder: '输入姓名' })}>
+          {p.name || '未填写'}
+        </h1>
+        <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginBottom: 16, cursor: 'pointer' }}
+          onClick={() => openEdit({ type: 'profile.titles', label: '求职目标', value: p.titles?.default || '', placeholder: '输入求职目标' })}>
+          {p.titles?.default || '未填写目标'}
+        </div>
+        {p.email && <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 3 }}>{p.email}</div>}
+        {p.phone && <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 3 }}>{p.phone}</div>}
+        {(resume.skills || []).length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            {(resume.skills || []).map((cat: any) => (
+              <div key={cat.id} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>{cat.category}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {(cat.skills || []).map((s: any, i: number) => (
+                    <span key={i} style={{ fontSize: 10, padding: '1px 6px', background: 'rgba(255,255,255,0.1)', borderRadius: 4 }}>{s.name}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-          {p.email && (
-            <div className="text-xs text-slate-500">
-              <p className="font-medium text-slate-700 mb-1">联系</p>
-              <p><EditableField value={p.email} onSave={(v) => patchProfile('email', v)} editMode={editMode} /></p>
-              <p><EditableField value={p.phone || ''} onSave={(v) => patchProfile('phone', v)} editMode={editMode} /></p>
-              <p><EditableField value={p.location || ''} onSave={(v) => patchProfile('location', v)} editMode={editMode} /></p>
-            </div>
-          )}
-          {(resume.skills || []).length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-slate-700 mb-2">技能</p>
-              {(resume.skills || []).map((cat: any) => (
-                <div key={cat.id} className="mb-2">
-                  <p className="text-xs font-medium text-slate-600 mb-1">{cat.category}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {(cat.skills || []).map((s: any, i: number) => <span key={i} className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">{s.name}</span>)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {(resume.education || []).length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-slate-700 mb-2">教育</p>
-              {(resume.education || []).map((e: any, idx: number) => (
-                <div key={e.id} className="text-xs">
-                  <p className="font-medium text-slate-700"><EditableField value={e.institution} onSave={(v) => patchEdu(idx, 'institution', v)} editMode={editMode} /></p>
-                  <p className="text-slate-500">
-                    <EditableField value={e.degree} onSave={(v) => patchEdu(idx, 'degree', v)} editMode={editMode} />
-                    {' · '}
-                    <EditableField value={e.field} onSave={(v) => patchEdu(idx, 'field', v)} editMode={editMode} />
-                  </p>
-                  <p className="text-slate-400">
-                    <EditableField value={e.startDate} onSave={(v) => patchEdu(idx, 'startDate', v)} editMode={editMode} />
-                    {' - '}
-                    <EditableField value={e.endDate || ''} onSave={(v) => patchEdu(idx, 'endDate', v)} editMode={editMode} />
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="space-y-4">
-          {p.summary && (
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <p className="text-sm text-slate-600 leading-relaxed"><EditableField value={p.summary} onSave={patchSummary} editMode={editMode} multiLine /></p>
-            </div>
-          )}
-          {(resume.work || []).length > 0 && (
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h2 className="text-sm font-bold text-slate-900 mb-3">工作经历</h2>
-              <div className="space-y-3">
-                {(resume.work || []).map((job: any, idx: number) => (
-                  <div key={job.id} className="border-l-2 border-indigo-200 pl-3">
-                    <p className="font-medium text-slate-900 text-sm">
-                      <EditableField value={job.position} onSave={(v) => patchWork(idx, 'position', v)} editMode={editMode} />
-                      {' · '}
-                      <EditableField value={job.company} onSave={(v) => patchWork(idx, 'company', v)} editMode={editMode} />
-                    </p>
-                    <p className="text-xs text-slate-400 mb-1">
-                      <EditableField value={job.startDate} onSave={(v) => patchWork(idx, 'startDate', v)} editMode={editMode} />
-                      {' - '}
-                      <EditableField value={job.endDate === 'present' ? '至今' : (job.endDate || '')} onSave={(v) => patchWork(idx, 'endDate', v === '至今' ? 'present' : v)} editMode={editMode} />
-                    </p>
-                    {(job.highlights || []).filter(Boolean).map((hl: string, hi: number) => (
-                      <p key={hi} className="text-xs text-slate-600 leading-relaxed">• <EditableHighlight value={hl} onSave={(v) => patchWorkHighlight(idx, hi, v)} editMode={editMode} /></p>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {(resume.projects || []).length > 0 && (
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h2 className="text-sm font-bold text-slate-900 mb-3">项目作品</h2>
-              <div className="grid grid-cols-2 gap-2">
-                {(resume.projects || []).map((proj: any, idx: number) => (
-                  <div key={proj.id} className="bg-slate-50 rounded-lg p-2 text-xs">
-                    <p className="font-medium text-slate-700"><EditableField value={proj.name} onSave={(v) => patchProj(idx, 'name', v)} editMode={editMode} /></p>
-                    {(proj.highlights || []).filter(Boolean).slice(0, 1).map((hl: string, hi: number) => (
-                      <p key={hi} className="text-slate-500"><EditableHighlight value={hl} onSave={(v) => patchProjHighlight(idx, hi, v)} editMode={editMode} /></p>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        )}
+      </div>
+      <div style={{ flex: 1, padding: 24 }}>
+        {p.summary && (
+          <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7, marginBottom: 16, padding: 12, background: '#f1f5f9', borderRadius: 8, cursor: 'pointer' }}
+            onClick={() => openEdit({ type: 'profile.summary', label: '个人简介', value: p.summary, placeholder: '输入个人简介', multiline: true })}>
+            {p.summary}
+          </div>
+        )}
+        {(resume.work || []).length > 0 && (
+          <Section title="工作经历" onAdd={() => addEntry('work')}>
+            {(resume.work || []).map((job: any) => (
+              <EntryCard key={job.id} onDelete={() => deleteEntry('work', job.id)}>
+                <EntryHeader company={job.company} position={job.position} start={job.startDate} end={job.current ? '至今' : job.endDate} />
+                {(job.highlights || []).map((h: string, i: number) => <Bullet key={i} text={h} />)}
+              </EntryCard>
+            ))}
+          </Section>
+        )}
       </div>
     </div>
   );
 }
 
-// ──── 健康分计算 ────
-function computeHealth(resume: any, jdAnalysis: JdAnalysis | null) {
+// ──── 通用辅助组件 ────
+function Section({ title, children, onEdit, onAdd }: { title: string; children: React.ReactNode; onEdit?: () => void; onAdd?: () => void }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1.5px solid #1e3a5f', paddingBottom: 4, marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', letterSpacing: 1 }}>{title}</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {onAdd && (
+            <button onClick={onAdd} style={{ fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', fontWeight: 500, padding: '0 4px' }}>+ 添加</button>
+          )}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function EntryCard({ children, onDelete }: { children: React.ReactNode; onDelete?: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', marginBottom: 14 }}
+    >
+      {hover && onDelete && (
+        <button
+          onClick={onDelete}
+          style={{
+            position: 'absolute', top: -2, right: -2,
+            fontSize: 10, background: '#fef2f2', color: '#ef4444',
+            border: '1px solid #fecaca', borderRadius: 6,
+            cursor: 'pointer', padding: '1px 6px', zIndex: 10,
+          }}
+        >
+          删除
+        </button>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function EntryHeader({ company, position, start, end }: { company: string; position?: string; start?: string; end?: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
+      <div>
+        <span style={{ fontWeight: 700, fontSize: 13, color: '#1f2937' }}>{company || '未填写'}</span>
+        {position && <span style={{ color: '#64748b', fontSize: 12, marginLeft: 8 }}>{position}</span>}
+      </div>
+      {(start || end) && <span style={{ fontSize: 11, color: '#94a3b8' }}>{start} - {end}</span>}
+    </div>
+  );
+}
+
+function Bullet({ text }: { text: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 2 }}>
+      <span style={{ color: '#94a3b8', flexShrink: 0, fontSize: 12 }}>•</span>
+      <span style={{ fontSize: 12, color: '#475569', lineHeight: 1.6 }}>{text}</span>
+    </div>
+  );
+}
+
+// ──── 健康度计算 ────
+function computeHealth(resume: Resume) {
   if (!resume) return null;
   let score = 100;
-  let jdCoverage: number | null = null;
-  const works = resume.work || [];
-  works.forEach((w: any) => {
-    const text = (w.highlights || []).join(' ');
-    if (!/[\d]+%|\d+[万亿千万百万]/.test(text)) score -= 10;
-  });
-  if (!resume.profile?.summary?.trim()) score -= 8;
-  if (jdAnalysis) {
-    const { matchedKeywords, missingKeywords } = jdAnalysis;
-    if (missingKeywords?.length > 0) {
-      const allText = works.map((w: any) => (w.highlights || []).join(' ')).join(' ');
-      const covered = matchedKeywords?.filter((k: string) => allText.includes(k)).length || 0;
-      const total = matchedKeywords?.length + missingKeywords?.length;
-      jdCoverage = total > 0 ? Math.round((covered / total) * 100) : null;
-    }
-  }
-  return { score: Math.max(0, score), jdCoverage };
+  if (!resume.profile?.name?.trim()) score -= 15;
+  if (!resume.profile?.summary?.trim()) score -= 10;
+  if (!resume.work?.length) score -= 25;
+  if (!resume.education?.length) score -= 15;
+  if (!resume.skills?.length) score -= 10;
+  const hasQuant = (resume.work || []).some((w: any) =>
+    (w.highlights || []).some((h: string) => /\d+[%￥万科]/.test(h))
+  );
+  if (!hasQuant) score -= 15;
+  return { score: Math.max(0, score) };
 }

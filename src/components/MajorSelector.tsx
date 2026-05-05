@@ -1,10 +1,19 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface Job {
   name: string;
-  skills: string[];
+  code?: string;
+  category?: string;
+  // 新API字段
+  required_skills?: string[];
+  bonus_skills?: string[];
+  salary_range?: string;
+  job_count?: number;
+  // 兼容旧API字段
+  skills?: string[];
   matchLevel: 'direct' | 'near' | 'cross';
   matchScore: number;
   skillGap?: string[];
@@ -64,19 +73,29 @@ export default function MajorSelector() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MajorMatchResult | null>(null);
   const [jdText, setJdText] = useState('');
+  const router = useRouter();
 
   const handleSearch = async () => {
     if (!major) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/major-match', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ majorName: major }),
+      const res = await fetch(`/api/major-mapping?major=${encodeURIComponent(major)}`, {
+        method: 'GET',
       });
       const json = await res.json();
       if (json.success) {
-        setResult(json.data);
+        setResult(json.data as MajorMatchResult);
+      } else if (json.fallback) {
+        // Supabase无数据，降级到/api/major-match
+        const fbRes = await fetch('/api/major-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ majorName: major }),
+        });
+        const fbJson = await fbRes.json();
+        if (fbJson.success) {
+          setResult(fbJson.data as MajorMatchResult);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -205,13 +224,25 @@ export default function MajorSelector() {
                       <div className="mb-2">
                         <p className="text-xs text-slate-500 mb-1">岗位技能：</p>
                         <div className="flex flex-wrap gap-1">
-                          {job.skills.map(skill => (
+                          {(job.required_skills || job.skills || []).map(skill => (
                             <span key={skill} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
                               {skill}
                             </span>
                           ))}
                         </div>
                       </div>
+                      {job.bonus_skills && job.bonus_skills.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-xs text-slate-500 mb-1">加分技能：</p>
+                          <div className="flex flex-wrap gap-1">
+                            {job.bonus_skills.map(skill => (
+                              <span key={skill} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {job.skillGap && job.skillGap.length > 0 && (
                         <div>
                           <p className="text-xs text-orange-600 mb-1">建议补充：</p>
@@ -226,6 +257,23 @@ export default function MajorSelector() {
                       )}
                     </div>
                   ))}
+                </div>
+
+                {/* 填写简历入口：使用匹配度最高的岗位 */}
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      const topJob = result?.recommendations?.[0];
+                      if (topJob) {
+                        router.push(`/editor?target=job&job_name=${encodeURIComponent(topJob.name)}&job_code=${encodeURIComponent(topJob.code || '')}`);
+                      } else {
+                        router.push('/editor');
+                      }
+                    }}
+                    className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm"
+                  >
+                    ✨ 根据「{result?.recommendations?.[0]?.name || '推荐岗位'}」开始填写简历 →
+                  </button>
                 </div>
               </div>
             )}

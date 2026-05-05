@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# install logs (Windows)
+install.log
+npm_install.log
+
+# build artifacts
+*.log

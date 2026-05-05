@@ -43,7 +43,7 @@ const SAMPLE_JD = `岗位职责：
 5. 对技术有热情，有良好的自驱力和学习能力`;
 
 export default function JDMatcher({ onStart }: { onStart: () => void }) {
-  const { setJdAnalysis } = useResumeStore();
+  const { setJdAnalysis, setTargetContext } = useResumeStore();
   const [jd, setJd] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
@@ -53,24 +53,21 @@ export default function JDMatcher({ onStart }: { onStart: () => void }) {
     if (!jd.trim()) return;
     setLoading(true);
 
-    // 从JD推断行业
+    // 从JD推断岗位方向
     const industry = inferIndustry(jd);
 
     try {
-      // 并发：从API拉取行业关键词 + 保留2秒加载体验
-      const [apiRes] = await Promise.all([
-        fetch(`/api/keywords?industry=${encodeURIComponent(industry)}&type=`).then(r => r.json()).catch(() => null),
-        new Promise(r => setTimeout(r, 1800)),
-      ]);
+      // 从新 API 拉取真实关键词数据（无人工延迟）
+      const apiRes = await fetch(`/api/jd-keywords?job_name=${encodeURIComponent(industry === '互联网' ? '前端工程师' : industry === '金融' ? '金融分析师' : '产品经理')}`).then(r => r.json()).catch(() => null);
 
       // 回退：如果API失败，用默认关键词
-      const apiKeywords = apiRes?.success && apiRes?.grouped
-        ? apiRes.grouped
+      const apiKeywords = apiRes?.success && apiRes?.data?.keywords
+        ? apiRes.data.keywords
         : { tech: [], soft: [], quant: [], cert: [] };
 
-      const techWords = apiKeywords.tech?.map((k: any) => k.keyword) || [];
-      const softWords = apiKeywords.soft?.map((k: any) => k.keyword) || [];
-      const quantWords = apiKeywords.quant?.map((k: any) => k.keyword) || [];
+      const techWords = apiKeywords.hard_skill?.map((k: any) => k.keyword || k) || [];
+      const softWords = apiKeywords.soft_skill?.map((k: any) => k.keyword || k) || [];
+      const quantWords = apiKeywords.quantitative?.map((k: any) => k.keyword || k) || [];
 
       // 如果API关键词为空，用硬编码备选
       const finalTech = techWords.length ? techWords : ['React', 'Vue', 'TypeScript', 'Node.js', 'Python', 'Java', 'Go', 'SQL', 'Redis', 'Docker', 'K8s', '微服务'];
@@ -105,15 +102,17 @@ export default function JDMatcher({ onStart }: { onStart: () => void }) {
         missingKeywords: missing,
         suggestions,
       });
+      // 设置目标上下文，供编辑器使用
+      setTargetContext({ type: 'jd', jdText: jd, jdJobName: industry });
     } catch {
-      // 网络错误时回退到基础分析
-      await new Promise(r => setTimeout(r, 1500));
+      // 网络错误时回退到基础分析（无人工延迟）
       const fallbackTech = ['React', 'Vue', 'TypeScript', 'Node.js', 'Python', 'Java', 'Go', 'SQL', 'Redis', 'Docker', 'K8s'];
       const upper = jd.toUpperCase();
       const techHits = fallbackTech.filter((w: string) => upper.includes(w.toUpperCase()) || jd.includes(w));
       const total = Math.round((Math.min(95, 40 + techHits.length * 8)) * 0.5 + 40);
       setResult({ score: total, level: total >= 70 ? '匹配度中等' : '匹配度偏低', industry, missing: [], matchedKeywords: techHits, suggestions: [], techScore: 60, softScore: 60, quantScore: 60 });
       setJdAnalysis({ jdText: jd, score: total, techScore: 60, softScore: 60, quantScore: 60, matchedKeywords: techHits, missingKeywords: [], suggestions: [] });
+      setTargetContext({ type: 'jd', jdText: jd, jdJobName: industry });
     }
 
     setLoading(false);
@@ -471,16 +470,50 @@ export default function JDMatcher({ onStart }: { onStart: () => void }) {
             }}>
               <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>生成简历体检报告</div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 16 }}>一键分享给朋友，让朋友也来测测匹配度</div>
-              <button style={{
-                padding: '10px 24px', background: '#fff', color: '#2563eb',
-                fontWeight: 600, fontSize: 13, border: 'none', borderRadius: 10, cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
+              <button
+                onClick={() => {
+                  const shareText = `我的简历匹配度分析结果：${result.score}分！${result.level}——快用「简历Pro」也来测测你的简历匹配度 👉 ${window.location.origin}`;
+                  if (navigator.share) {
+                    navigator.share({ title: '简历匹配度分析', text: shareText });
+                  } else {
+                    navigator.clipboard.writeText(shareText).then(() => alert('分享文案已复制到剪贴板！'));
+                  }
+                }}
+                style={{
+                  padding: '10px 24px', background: '#fff', color: '#2563eb',
+                  fontWeight: 600, fontSize: 13, border: 'none', borderRadius: 10, cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
                 onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.transform = 'scale(1.03)'; }}
                 onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.transform = 'scale(1)'; }}
               >
                 分享给朋友
               </button>
+            </div>
+
+            {/* 专业推荐入口 */}
+            <div style={{
+              background: 'linear-gradient(135deg, #f97316, #ea580c)',
+              borderRadius: 20, padding: '24px 28px', textAlign: 'center', color: '#fff',
+              boxShadow: '0 4px 20px rgba(249,115,22,0.25)',
+            }}>
+              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>根据专业选岗位</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', marginBottom: 16 }}>
+                输入你的专业，AI 推荐对口岗位 + 技能缺口分析
+              </div>
+              <a
+                href="/major"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '10px 24px', background: '#fff', color: '#ea580c',
+                  fontWeight: 600, fontSize: 13, border: 'none', borderRadius: 10, cursor: 'pointer',
+                  textDecoration: 'none', transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.transform = 'scale(1.03)'; }}
+                onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.transform = 'scale(1)'; }}
+              >
+                查看专业 → 岗位推荐 →
+              </a>
             </div>
           </div>
         )}

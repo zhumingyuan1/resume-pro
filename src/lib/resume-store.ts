@@ -5,6 +5,25 @@ import { persist } from 'zustand/middleware';
 import type { Resume, JdAnalysis } from '@/types/resume';
 
 
+// 目标上下文类型
+export type TargetType = 'jd' | 'job' | null;
+
+export interface TargetContext {
+  type: TargetType;
+  // type=jd 时
+  jdText?: string;
+  jdJobName?: string;
+  // type=job 时
+  jobCode?: string;
+  jobName?: string;
+  jobKeywords?: {
+    hard_skill: string[];
+    soft_skill: string[];
+    experience: string[];
+    quantitative: string[];
+  };
+}
+
 export interface ResumeStore {
   userId: string;
   currentResume: Resume | null;
@@ -19,6 +38,7 @@ export interface ResumeStore {
     suggestions: string[];
   } | null;
   jdAnalysis: JdAnalysis | null;   // JD分析结果
+  targetContext: TargetContext;     // 目标上下文（新增）
   history: Resume[];
   historyIndex: number;
   // 投递追踪
@@ -31,6 +51,8 @@ export interface ResumeStore {
   setSelectedTemplate: (template: string) => void;
   setAtsResult: (result: ResumeStore['atsResult'] | null) => void;
   setJdAnalysis: (analysis: JdAnalysis | null) => void;  // 新增
+  setTargetContext: (ctx: TargetContext) => void;          // 新增
+  clearTargetContext: () => void;                           // 新增
   addResume: (resume: Resume) => void;
   updateResume: (id: string, updates: Partial<Resume>) => void;
   deleteResume: (id: string) => void;
@@ -99,6 +121,7 @@ const initialState = {
   selectedTemplate: 'template-1',
   atsResult: null,
   jdAnalysis: null,
+  targetContext: { type: null } as TargetContext,
   history: [] as Resume[],
   historyIndex: -1,
   applications: [] as ApplicationRecord[],
@@ -125,6 +148,8 @@ export const useResumeStore = create<ResumeStore>()(
       setSelectedTemplate: (template) => set({ selectedTemplate: template }),
       setAtsResult: (result) => set({ atsResult: result }),
       setJdAnalysis: (analysis) => set({ jdAnalysis: analysis }),
+      setTargetContext: (ctx) => set({ targetContext: ctx }),
+      clearTargetContext: () => set({ targetContext: { type: null } }),
 
       addResume: (resume) => set((state) => ({
         resumes: [...state.resumes, resume],

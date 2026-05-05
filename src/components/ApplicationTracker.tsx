@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useResumeStore, type ApplicationRecord } from '@/lib/resume-store';
 
 const STATUS_OPTIONS: ApplicationRecord['status'][] = [
@@ -67,20 +67,23 @@ export default function ApplicationTracker({ onClose }: { onClose: () => void })
     }
   };
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: applications.length,
     interviewing: applications.filter(a => ['一面','二面','三面','OC'].includes(a.status)).length,
     offer: applications.filter(a => a.status === 'offer').length,
     rejected: applications.filter(a => a.status === '拒').length,
-  };
+  }), [applications]);
 
-  const filtered = filterStatus === '全部'
-    ? applications
-    : applications.filter(a => a.status === filterStatus);
-
-  const sorted = [...filtered].sort((a, b) =>
-    new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()
+  const filtered = useMemo(() =>
+    filterStatus === '全部'
+      ? applications
+      : applications.filter(a => a.status === filterStatus),
+    [applications, filterStatus]
   );
+
+  const sorted = useMemo(() => [...filtered].sort((a, b) =>
+    new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()
+  ), [filtered]);
 
   return (
     <div style={{

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useResumeStore } from '@/lib/resume-store';
+import { useSearchParams } from 'next/navigation';
 import HealthScore from '@/components/HealthScore';
 import TemplateSelector from '@/components/TemplateSelector';
 import ExportButton from '@/components/ExportButton';
@@ -36,9 +36,7 @@ const ICONS: Record<string, string> = {
   user: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
   briefcase: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
   graduation: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
-  rocket: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>`,
   star: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.24 12 2"/></svg>`,
-  spark: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M12 6v6l4 2"/></svg>`,
   mail: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
   chat: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
   share: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
@@ -49,13 +47,13 @@ function computeProgress(resume: Resume | null): number {
   if (!resume) return 0;
   const p = resume.profile || {};
   let score = 0;
-  if (p.name?.trim()) score += 15;           // 姓名
-  if (p.titles?.default?.trim()) score += 10; // 求职目标
-  if ((resume.education || []).length > 0) score += 15; // 教育经历
-  if ((resume.work || []).length > 0) score += 25;   // 工作经历
-  if ((resume.projects || []).length > 0) score += 15; // 项目经历
-  if ((resume.skills || []).length > 0) score += 10; // 技能
-  if (p.summary?.trim()) score += 10;         // 个人简介
+  if (p.name?.trim()) score += 15;
+  if (p.titles?.default?.trim()) score += 10;
+  if ((resume.education || []).length > 0) score += 15;
+  if ((resume.work || []).length > 0) score += 25;
+  if ((resume.projects || []).length > 0) score += 15;
+  if ((resume.skills || []).length > 0) score += 10;
+  if (p.summary?.trim()) score += 10;
   return Math.min(100, score);
 }
 
@@ -69,11 +67,10 @@ function makeEmpty(): Resume {
   };
 }
 
-export default function HomePage() {
-  const [view, setView] = useState<'home' | 'editor'>('home');
+export default function EditorPage() {
   const [section, setSection] = useState('basic');
-  const { setCurrentResume, currentResume } = useResumeStore();
-  const { jdAnalysis } = useResumeStore();
+  const { setCurrentResume, currentResume, targetContext, setTargetContext, clearTargetContext } = useResumeStore();
+  const jdAnalysis = useResumeStore(s => s.jdAnalysis);
   const progress = computeProgress(currentResume);
   const [navWidth, setNavWidth] = useState(160);
   const [navDragging, setNavDragging] = useState(false);
@@ -84,6 +81,22 @@ export default function HomePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showMultiVersion, setShowMultiVersion] = useState(false);
   const [showApplicationTracker, setShowApplicationTracker] = useState(false);
+  const [showJdAnalyzer, setShowJdAnalyzer] = useState(false);
+  const searchParams = useSearchParams();
+
+  // 初始化：如果URL有参数，解析目标上下文
+  useEffect(() => {
+    const type = searchParams.get('target');
+    if (type === 'jd') {
+      const jdText = searchParams.get('jd_text') || '';
+      const jdJobName = searchParams.get('jd_job_name') || '';
+      setTargetContext({ type: 'jd', jdText, jdJobName });
+    } else if (type === 'job') {
+      const jobCode = searchParams.get('job_code') || '';
+      const jobName = searchParams.get('job_name') || '';
+      setTargetContext({ type: 'job', jobCode, jobName });
+    }
+  }, []);
 
   const onNavDown = (e: React.MouseEvent) => {
     setNavDragging(true);
@@ -92,8 +105,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!navDragging) return;
     const move = (ev: MouseEvent) => {
-      const delta = ev.clientX - navStart.current.x;
-      setNavWidth(Math.max(140, Math.min(200, navStart.current.w + delta)));
+      setNavWidth(Math.max(140, Math.min(200, navStart.current.w + ev.clientX - navStart.current.x)));
     };
     const up = () => setNavDragging(false);
     window.addEventListener('mousemove', move);
@@ -120,11 +132,15 @@ export default function HomePage() {
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, [splitDragging, navWidth, split]);
 
-  const router = useRouter();
-
-  const handleStart = () => {
-    router.push('/editor');
-  };
+  // 如果没有简历数据，自动创建空简历
+  useEffect(() => {
+    if (!currentResume) {
+      const { userId } = useResumeStore.getState();
+      const resume = makeEmpty();
+      resume.userId = userId;
+      setCurrentResume(resume);
+    }
+  }, [currentResume, setCurrentResume]);
 
   const renderForm = () => {
     switch (section) {
@@ -152,9 +168,76 @@ export default function HomePage() {
     }
   };
 
-  if (view === 'home') {
-    return <JDMatcher onStart={handleStart} />;
-  }
+  // 目标上下文Banner
+  const renderTargetBanner = () => {
+    if (!targetContext.type) return null;
+
+    if (targetContext.type === 'jd') {
+      return (
+        <div style={{
+          background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
+          padding: '10px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)' }}>
+            🎯 当前目标：<strong>{targetContext.jdJobName || 'JD分析'}</strong>
+          </span>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', flex: 1 }}>
+            基于你粘贴的JD，正在针对性优化简历
+          </span>
+          <button
+            onClick={() => setShowJdAnalyzer(true)}
+            style={{ fontSize: 11, padding: '4px 10px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, cursor: 'pointer' }}
+          >
+            重新分析JD
+          </button>
+          <button
+            onClick={clearTargetContext}
+            style={{ fontSize: 11, padding: '4px 10px', background: 'transparent', color: 'rgba(255,255,255,0.6)', border: 'none', cursor: 'pointer' }}
+          >
+            ✕ 清除
+          </button>
+        </div>
+      );
+    }
+
+    if (targetContext.type === 'job') {
+      return (
+        <div style={{
+          background: 'linear-gradient(135deg, #f97316, #ea580c)',
+          padding: '10px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)' }}>
+            🎯 当前目标：<strong>{targetContext.jobName || '未知岗位'}</strong>
+          </span>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', flex: 1 }}>
+            基于专业推荐，正在针对性优化简历
+          </span>
+          <a
+            href="/major"
+            style={{ fontSize: 11, padding: '4px 10px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, textDecoration: 'none' }}
+          >
+            重新选岗位
+          </a>
+          <button
+            onClick={clearTargetContext}
+            style={{ fontSize: 11, padding: '4px 10px', background: 'transparent', color: 'rgba(255,255,255,0.6)', border: 'none', cursor: 'pointer' }}
+          >
+            ✕ 清除
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: '#f1f5f9' }}>
@@ -166,38 +249,31 @@ export default function HomePage() {
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ flexShrink: 0 }}>
-            <TemplateSelector />
-          </div>
+          <TemplateSelector />
           <HistoryButtons />
           <AIGenerateButton />
           <button onClick={() => setShowMultiVersion(true)}
-            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s' }}
-            onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = '#f9fafb'; el.style.borderColor = '#d1d5db'; }}
-            onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = '#fff'; el.style.borderColor = '#e5e7eb'; }}>
+            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>
             ✨ 多版本
           </button>
           <button onClick={() => setShowApplicationTracker(true)}
-            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s' }}
-            onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = '#f9fafb'; el.style.borderColor = '#d1d5db'; }}
-            onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = '#fff'; el.style.borderColor = '#e5e7eb'; }}>
+            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>
             📋 投递追踪
           </button>
-          <button onClick={() => setView('home')}
-            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s' }}
-            onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = '#f9fafb'; el.style.borderColor = '#d1d5db'; }}
-            onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = '#fff'; el.style.borderColor = '#e5e7eb'; }}>
-            返回首页
-          </button>
-          <ExportButton />
+          <a href="/"
+            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+            首页
+          </a>
           <a href="/health"
-            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', transition: 'all 0.15s', display: 'flex', alignItems: 'center' }}
-            onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = '#f9fafb'; el.style.borderColor = '#d1d5db'; }}
-            onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = '#fff'; el.style.borderColor = '#e5e7eb'; }}>
+            style={{ padding: '7px 14px', fontSize: 13, fontWeight: 500, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
             📋 体检报告
           </a>
+          <ExportButton />
         </div>
       </header>
+
+      {/* 目标上下文Banner */}
+      {renderTargetBanner()}
 
       {/* 主体 */}
       <div ref={containerRef} style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -265,6 +341,19 @@ export default function HomePage() {
       {/* 多版本生成面板 */}
       {showMultiVersion && <MultiVersionPanel onClose={() => setShowMultiVersion(false)} />}
       {showApplicationTracker && <ApplicationTracker onClose={() => setShowApplicationTracker(false)} />}
+
+      {/* JD分析器弹窗 */}
+      {showJdAnalyzer && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '90%', maxWidth: 600, maxHeight: '80vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700 }}>🎯 重新分析 JD</h2>
+              <button onClick={() => setShowJdAnalyzer(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <JDMatcher onStart={() => { setShowJdAnalyzer(false); }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
