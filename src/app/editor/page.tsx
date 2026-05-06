@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { useResumeStore } from '@/lib/resume-store';
 import { useSearchParams } from 'next/navigation';
 import HealthScore from '@/components/HealthScore';
@@ -67,7 +67,7 @@ function makeEmpty(): Resume {
   };
 }
 
-export default function EditorPage() {
+function EditorContent() {
   const [section, setSection] = useState('basic');
   const { setCurrentResume, currentResume, targetContext, setTargetContext, clearTargetContext } = useResumeStore();
   const jdAnalysis = useResumeStore(s => s.jdAnalysis);
@@ -355,5 +355,13 @@ export default function EditorPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function EditorPage() {
+  return (
+    <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#6b7280' }}>加载中...</div>}>
+      <EditorContent />
+    </Suspense>
   );
 }
